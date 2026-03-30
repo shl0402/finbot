@@ -1,0 +1,50 @@
+/* Tailwind CSS v4 — must use this import (old @tailwind directives do NOT work with @tailwindcss/postcss) */
+@import "tailwindcss";
+
+:root {
+  --bg-primary: #131314;
+  --bg-secondary: #1e1e1e;
+  --bg-input: #2a2a2a;
+  --text-primary: #e3e3e3;
+  --text-secondary: #9aa0a6;
+  --accent: #8ab4f8;
+  --border: #3c4043;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+/* Scrollbar (Gemini-like subtle) */
+::-webkit-scrollbar {
+  width: 8px;
+}
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+::-webkit-scrollbar-thumb {
+  background: #3c4043;
+  border-radius: 4px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: #5f6368;
+}
+
+/* Blinking cursor for streaming */
+@keyframes blink {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0;
+  }
+}
+.cursor-blink {
+  animation: blink 1s step-end infinite;
+}
