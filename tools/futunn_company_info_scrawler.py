@@ -1,6 +1,149 @@
 from playwright.sync_api import sync_playwright
 import json
 
+
+STATS_KEYS = [
+    "Market Cap",
+    "P/E (TTM)",
+    "P/E (Static)",
+    "Volume",
+    "Open",
+    "Prev Close",
+    "Turnover",
+    "Turnover Ratio",
+    "Shares",
+    "52wk High",
+    "52wk Low",
+    "P/B",
+    "Float Cap",
+    "Dividend TTM",
+    "Div Yield TTM",
+    "Dividend LFY",
+    "Div Yield  LFY",
+    "Shs Float",
+    "Historical High",
+    "Historical Low",
+    "Avg Price",
+    "Lot Size",
+    "High",
+    "Low",
+    "Range %",
+]
+
+PROFILE_KEYS = [
+    "Symbol",
+    "Company Name",
+    "ISIN",
+    "Listing Date",
+    "Issue Price",
+    "Shares Offered",
+    "Founded",
+    "Registered Address",
+    "Chairman",
+    "Secretary",
+    "Audit Institution",
+    "Company Category",
+    "Registered Office",
+    "Head Office and Principal Place of Business",
+    "Fiscal Year Ends",
+    "Employees",
+    "Market",
+    "Phone",
+    "Fax",
+    "Email",
+    "Website",
+    "Business",
+]
+
+
+def _get_text_or_na(page, selector: str) -> str:
+    loc = page.locator(selector)
+    if loc.count() == 0:
+        return "N/A"
+    value = loc.first.inner_text().strip()
+    return value if value else "N/A"
+
+
+def _extract_price(page) -> str:
+    loc = page.locator('.price-current .price')
+    if loc.count() == 0:
+        return "N/A"
+
+    # Keep the first visible line and avoid icon glyph text.
+    raw = loc.first.inner_text().strip().split('\n')[0].strip()
+    return raw if raw else "N/A"
+
+
+def _collect_stats_map(page) -> dict:
+    stats_map = {}
+    items = page.locator('.detail-card .card-item')
+    for i in range(items.count()):
+        item = items.nth(i)
+        spans = item.locator('span')
+        if spans.count() < 2:
+            continue
+        value = spans.nth(0).inner_text().strip()
+        label = spans.nth(1).inner_text().strip()
+        if label:
+            stats_map[label] = value or "N/A"
+    return stats_map
+
+
+def _expand_hidden_stats_if_needed(page, stats_map: dict) -> dict:
+    # If key hidden-only fields are missing, expand the card and collect again.
+    hidden_only_keys = {
+        "High",
+        "Low",
+        "Open",
+        "Prev Close",
+        "Turnover",
+        "Turnover Ratio",
+        "P/E (Static)",
+        "52wk High",
+        "52wk Low",
+        "Historical High",
+        "Historical Low",
+        "Avg Price",
+        "Lot Size",
+    }
+
+    if hidden_only_keys.issubset(set(stats_map.keys())):
+        return stats_map
+
+    toggle = page.locator('.detail-card .right-tip, .detail-card .arrow-double-down')
+    if toggle.count() > 0:
+        try:
+            toggle.first.click(timeout=3000)
+            page.wait_for_timeout(400)
+        except Exception:
+            return stats_map
+
+    expanded_stats_map = _collect_stats_map(page)
+
+    # Merge while preferring non-empty values.
+    merged = dict(stats_map)
+    for key, value in expanded_stats_map.items():
+        if key not in merged or merged[key] in {"", "N/A", "--"}:
+            merged[key] = value
+    return merged
+
+
+def _collect_profile_map(page) -> dict:
+    profile_map = {}
+    items = page.locator('.company-info-item')
+    for i in range(items.count()):
+        item = items.nth(i)
+        title = item.locator('.title')
+        value = item.locator('.value')
+        if title.count() == 0 or value.count() == 0:
+            continue
+        key = title.first.inner_text().strip()
+        val = value.first.inner_text().strip()
+        if key:
+            profile_map[key] = val or "N/A"
+    return profile_map
+
+
 def scrape_futunn_stock_info(url: str, headless: bool = True) -> dict:
     """
     Scrapes detailed company and stock information from a Futunn stock page.
@@ -28,73 +171,37 @@ def scrape_futunn_stock_info(url: str, headless: bool = True) -> dict:
         
         page = context.new_page()
         
-        print(f"Loading Futunn stock page: {url} ...")
         page.goto(url, wait_until="domcontentloaded")
         
         # Wait for the company info section to mount in the DOM
         try:
             page.wait_for_selector('.company-info', timeout=15000)
         except Exception:
-            print("Timeout waiting for company info to load.")
             browser.close()
             return {}
 
-        # Extract data using browser-side JavaScript
-        stock_data = page.evaluate('''() => {
-            const getText = (selector) => {
-                const el = document.querySelector(selector);
-                return el ? el.innerText.trim() : "N/A";
-            };
+        stats_map = _collect_stats_map(page)
+        stats_map = _expand_hidden_stats_if_needed(page, stats_map)
+        profile_map = _collect_profile_map(page)
 
-            const data = {
-                company_name: getText('.detail-top-head h2.name'),
-                price: "N/A",
-                change_price: getText('.price-current .change-price'),
-                change_percent: getText('.price-current .change-ratio'),
-                description: getText('.company-desc p.text-wrap'),
-                market_cap: "N/A",
-                pe_ratio: "N/A",
-                stats: {},
-                profile: {}
-            };
+        stats = {key: stats_map.get(key, "N/A") for key in STATS_KEYS}
+        profile = {key: profile_map.get(key, "N/A") for key in PROFILE_KEYS}
 
-            // Clean up the price string (it often contains nested icon text/spacing)
-            const priceEl = document.querySelector('.price-current .price');
-            if (priceEl) {
-                // Grab just the first text node to avoid nested icon text
-                data.price = priceEl.childNodes[0].textContent.trim();
-            }
+        pe_ratio = stats.get("P/E (TTM)", "N/A")
+        if pe_ratio == "N/A":
+            pe_ratio = stats.get("P/E (Static)", "N/A")
 
-            // Extract the Key Stats grid (Market Cap, P/E, Volume, etc.)
-            const statItems = document.querySelectorAll('.detail-card .card-item');
-            statItems.forEach(item => {
-                const spans = item.querySelectorAll('span');
-                if (spans.length >= 2) {
-                    const val = spans[0].innerText.trim();
-                    const key = spans[1].innerText.trim();
-                    data.stats[key] = val;
-                }
-            });
-
-            // Extract the Company Profile list (ISIN, Listing Date, CEO, etc.)
-            const profileItems = document.querySelectorAll('.company-info-item');
-            profileItems.forEach(item => {
-                const titleEl = item.querySelector('.title');
-                const valueEl = item.querySelector('.value');
-                if (titleEl && valueEl) {
-                    const key = titleEl.innerText.trim();
-                    const val = valueEl.innerText.trim();
-                    data.profile[key] = val;
-                }
-            });
-
-            // Elevate highly requested stats to the top level for convenience
-            if (data.stats['Market Cap']) data.market_cap = data.stats['Market Cap'];
-            if (data.stats['P/E (TTM)']) data.pe_ratio = data.stats['P/E (TTM)'];
-            else if (data.stats['P/E (Static)']) data.pe_ratio = data.stats['P/E (Static)'];
-
-            return data;
-        }''')
+        stock_data = {
+            "company_name": _get_text_or_na(page, '.detail-top-head h2.name'),
+            "price": _extract_price(page),
+            "change_price": _get_text_or_na(page, '.price-current .change-price'),
+            "change_percent": _get_text_or_na(page, '.price-current .change-ratio'),
+            "description": _get_text_or_na(page, '.company-desc p.text-wrap'),
+            "market_cap": stats.get("Market Cap", "N/A"),
+            "pe_ratio": pe_ratio,
+            "stats": stats,
+            "profile": profile,
+        }
 
         browser.close()
         return stock_data
