@@ -1,0 +1,140 @@
+# Futunn specific mappings
+# Format: [alias1, alias2, SC, TC]: SYMBOL-EXCHANGE
+
+[1024, kuaishou, 快手, 快手]: 01024-HK
+[1038, cki, cheung-kong-infrastructure, 长江基建集团, 長江基建集團]: 01038-HK
+[1088, chinacoal, shenhua, 中国神华, 中國神華]: 01088-HK
+[1093, cspc, cspc-pharma, 石药集团, 石藥集團]: 01093-HK
+[1109, cr-land, china-resources-land, 华润置地, 華潤置地]: 01109-HK
+[1128, wynn, wynn-macau, 永利澳门, 永利澳門]: 01128-HK
+[116, chow-sang-sang, ctf, 周生生, 周生生]: 00116-HK
+[1171, yanzhou-coal, yankuang, 兖矿能源, 兗礦能源]: 01171-HK
+[1177, sinobiopharm, 中国生物制药, 中國生物製藥]: 01177-HK
+[1193, cr-gas, china-resources-gas, 华润燃气, 華潤燃氣]: 01193-HK
+[1199, cosco-shipping, cosco-ports, 中远海运港口, 中遠海運港口]: 01199-HK
+[1208, mmg, 五矿资源, 五礦資源]: 01208-HK
+[1211, byd, byd-company, 比亚迪股份, 比亞迪股份]: 01211-HK
+[1288, abc, agbank, 农业银行, 農業銀行]: 01288-HK
+[1299, aia, 友邦保险, 友邦保險]: 01299-HK
+[1339, picc-group, 中国人保, 中國人保]: 01339-HK
+[1347, hlh-pharma, hua-hong, 华虹半导体, 華虹半導體]: 01347-HK
+[135, kunlun-energy, 昆仑能源, 昆侖能源]: 00135-HK
+[1357, meitu, 美图公司, 美圖公司]: 01357-HK
+[1378, china-hongqiao, 中国宏桥, 中國宏橋]: 01378-HK
+[1398, icbc, 工商银行, 工商銀行]: 01398-HK
+[1415, cowell, 高伟电子, 高偉電子]: 01415-HK
+[144, china-merchants, 招商局港口, 招商局港口]: 00144-HK
+[1513, lizhu-pharma, 丽珠医药, 麗珠醫藥]: 01513-HK
+[1519, J&T EXPRESS, 极兔速递, 極兔速遞]: 01519-HK
+[1658, psbc, postal-savings-bank, 邮储银行, 郵儲銀行]: 01658-HK
+[168, tsingtao-beer, 青岛啤酒股份, 青島啤酒股份]: 00168-HK
+[1698, TME-SW, Tencent Music Entertainment Group, tencent music, 腾讯音乐, 騰訊音樂]: 01698-HK
+[1729, time-interconnect, 汇聚科技, 匯聚科技]: 01729-HK
+[175, geely, geely-auto, 吉利汽车, 吉利汽車]: 00175-HK
+[1787, h-l-global, 山东黄金, 山東黃金]: 01787-HK
+[1801, innovent, 信达生物, 信達生物]: 01801-HK
+[1810, xiaomi, xiao-mi, 小米集团, 小米集團]: 01810-HK
+[1818, zhaojin-mining, 招金矿业, 招金礦業]: 01818-HK
+[1833, ping-an-healthcare, good-doctor, 平安好医生, 平安好醫生]: 01833-HK
+[1876, budweiser, 百威亚太, 百威亞太]: 01876-HK
+[1898, china-coal, 中煤能源, 中煤能源]: 01898-HK
+[1919, cosco-ship-hold, 中远海控, 中遠海控]: 01919-HK
+[1928, sands-china, sands, 金沙中国有限公司, 金沙中國有限公司]: 01928-HK
+[1929, chow-tai-fook, 周大福, 周大福]: 01929-HK
+[2, clp-holdings, 中电控股, 中電控股]: 00002-HK
+[2015, li-auto, lixiang, 理想汽车, 理想汽車]: 02015-HK
+[2018, aac-tech, 瑞声科技, 瑞聲科技]: 02018-HK
+[2020, anta-sports, anta, 安踏体育, 安踏體育]: 02020-HK
+[2057, zto-express, 中通快递, 中通快遞]: 02057-HK
+[2068, chalieco, 中铝国际, 中鋁國際]: 02068-HK
+[2099, china-gold, 中国黄金国际, 中國黃金國際]: 02099-HK
+[220, uni-president, 统一企业中国, 統一企業中國]: 00220-HK
+[2238, gac-group, gac-motor, 广汽集团, 廣汽集團]: 02238-HK
+[2252, MEDBOT-B, medbot, 微创机器人, 微創機器人]: 02252-HK
+[2268, wuxi-xdc, 药明合联, 藥明合聯]: 02268-HK
+[2269, wuxi-bio, 药明生物, 藥明生物]: 02269-HK
+[2282, mgm-china, mgm, 美高梅中国, 美高梅中國]: 02282-HK
+[2318, ping-an, ping-an-insurance, 中国平安, 中國平安]: 02318-HK
+[2319, mengniu-dairy, mengniu, 蒙牛乳业, 蒙牛乳業]: 02319-HK
+[2328, picc-p-c, 中国财险, 中國財險]: 02328-HK
+[2331, li-ning, 李宁, 李寧]: 02331-HK
+[2333, great-wall-motor, gwm, 长城汽车, 長城汽車]: 02333-HK
+[2342, comba-telecom, 京信通信, 京信通信]: 02342-HK
+[2359, wuxi-apptec, 药明康德, 藥明康德]: 02359-HK
+[2378, prudential, 保诚, 保誠]: 02378-HK
+[2380, china-power, 中国电力, 中國電力]: 02380-HK
+[2382, sunny-optical, 舜宇光学科技, 舜宇光學科技]: 02382-HK
+[2388, boc-hong-kong, bochk, 中银香港, 中銀香港]: 02388-HK
+[241, ali-health, alibaba-health, 阿里健康, 阿里健康]: 00241-HK
+[2432, dobot, 越疆科技, 越疆科技]: 02432-HK
+[2588, boc-aviation, 中银航空租赁, 中銀航空租賃]: 02588-HK
+[2600, chalco, aluminum-corp, 中国铝业, 中國鋁業]: 02600-HK
+[2601, cpich, pacific-insurance, 中国太保, 中國太保]: 02601-HK
+[2618, jd-logistics, 京东物流, 京東物流]: 02618-HK
+[2628, china-life, 中国人寿, 中國人壽]: 02628-HK
+[2638, hke-trust, 港灯, 港燈]: 02638-HK
+[2688, enn-energy, 新奥能源, 新奧能源]: 02688-HK
+[27, galaxy-ent, galaxy-entertainment, 银河娱乐, 銀河娛樂]: 00027-HK
+[276, mongolia-energy, 蒙古能源, 蒙古能源]: 00276-HK
+[285, byd-electronic, 比亚迪电子, 比亞迪電子]: 00285-HK
+[2888, standard-chartered, stanchart, 渣打集团, 渣打集團]: 02888-HK
+[2899, zijin-mining, zijin, 紫金矿业, 紫金礦業]: 02899-HK
+[291, china-resources-beer, cr-beer, 华润啤酒, 華潤啤酒]: 00291-HK
+[293, cathay-pacific, 国泰航空, 國泰航空]: 00293-HK
+[3, hkgas, towngas, 香港中华煤气, 香港中華煤氣]: 00003-HK
+[316, oocl, 东方海外国际, 東方海外國際]: 00316-HK
+[322, tingyi, 康师傅控股, 康師傅控股]: 00322-HK
+[3328, bank-of-comm, bocom, 交通银行, 交通銀行]: 03328-HK
+[3330, lingbao-gold, 灵宝黄金, 靈寶黃金]: 03330-HK
+[3347, tigermed, 泰格医药, 泰格醫藥]: 03347-HK
+[358, jiangxi-copper, 江西铜业股份, 江西銅業股份]: 00358-HK
+[3668, YANCOAL, 兖煤澳大利亚, 兗煤澳大利亞]: 03668-HK
+[3690, meituan, 美团, 美團]: 03690-HK
+[3692, hansoh-pharma, 翰森制药, 翰森製藥]: 03692-HK
+[386, sinopec, 中国石油化工股份, 中國石油化工股份]: 00386-HK
+[388, hkex, hk-exchange, 香港交易所, 香港交易所]: 00388-HK
+[3968, cmb, china-merchants-bank, 招商银行, 招商銀行]: 03968-HK
+[3978, BESTSTUDY EDU, 卓越教育集團, 卓越教育, 卓越教育集团, Best study, beststudy]: 03978-HK
+[3993, moly, china-moly, 洛阳钼业, 洛陽鉬業]: 03993-HK
+[486, rusal, 俄铝, 俄鋁]: 00486-HK
+[489, dongfeng-motor, 东风集团股份, 東風集團股份]: 00489-HK
+[5, hsbc, 汇丰控股, 匯豐控股]: 00005-HK
+[590, luk-fook, 六福集团, 六福集團]: 00590-HK
+[6, power-assets, 电能实业, 電能實業]: 00006-HK
+[6160, beigene, 百济神州, 百濟神州]: 06160-HK
+[6181, LAOPU GOLD, 老铺黄金, 老鋪黃金]: 06181-HK
+[6618, jd-health, 京东健康, 京東健康]: 06618-HK
+[667, china-oriental, 中国东方集团, 中國東方集團]: 00667-HK
+[6869, everbright-env, 光大环境, 光大環境]: 06869-HK
+[700, tencent, 腾讯控股, 騰訊控股]: 00700-HK
+[763, zte, 中兴通讯, 中興通訊]: 00763-HK
+[772, china-literature, 阅文集团, 閱文集團]: 00772-HK
+[780, tongcheng-travel, 同程旅行, 同程旅行]: 00780-HK
+[788, china-tower, 中国铁塔, 中國鐵塔]: 00788-HK
+[828, dynasty-wine, 王朝酒业, 王朝酒業]: 00828-HK
+[836, cr-power, china-resources-power, 华润电力, 華潤電力]: 00836-HK
+[839, china-education, 中教控股, 中教控股]: 00839-HK
+[880, sjm-holdings, 澳博控股, 澳博控股]: 00880-HK
+[881, zhongsheng, 中升控股, 中升控股]: 00881-HK
+[939, ccb, construction-bank, 建设银行, 建設銀行]: 00939-HK
+[945, manulife, 宏利金融, 宏利金融]: 00945-HK
+[9618, jd, jd-com, 京东集团, 京東集團]: 09618-HK
+[9626, bilibili, 哔哩哔哩, 嗶哩嗶哩]: 09626-HK
+[9633, nongfu-spring, 农夫山泉, 農夫山泉]: 09633-HK
+[9660, horizon-robotics, 地平线, 地平線]: 09660-HK
+[981, smic, 中芯国际, 中芯國際]: 00981-HK
+[9866, nio, nio-inc, 蔚来, 蔚來]: 09866-HK
+[9868, xpeng, 小鹏汽车, 小鵬汽車]: 09868-HK
+[9880, UBTECH ROBOTICS, 优必选, 優必選]: 09880-HK
+[9888, baidu, 百度集团, 百度集團]: 09888-HK
+[9899, netease-music, 网易云音乐, 網易雲音樂]: 09899-HK
+[9901, new-oriental, 新东方, 新東方]: 09901-HK
+[992, lenovo, 联想集团, 聯想集團]: 00992-HK
+[9926, akeso, 康方生物, 康方生物]: 09926-HK
+[9961, trip-com, 携程集团, 攜程集團]: 09961-HK
+[9969, inno-care, 诺诚健华, 諾誠健華]: 09969-HK
+[998, citic-bank, 中信银行, 中信銀行]: 00998-HK
+[9988, alibaba, baba, 阿里巴巴, 阿里巴巴]: 09988-HK
+[9999, netease, 网易, 網易]: 09999-HK
+[nvda, nvidia, nvidia-corp, 英伟达, 英偉達]: NVDA-US
+[tesla, tsla, tesla-car, 特斯拉, 特斯拉]: TSLA-US
