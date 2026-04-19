@@ -9,6 +9,7 @@ finbot/
 ├── backend/          FastAPI API server (chat, dashboard data)
 ├── frontend/         Next.js web UI (React 19 + Tailwind CSS v4)
 ├── FinBot/           Streamlit prototype (legacy)
+├── tools/            Agent tools for the chatbot
 └── README.md
 ```
 
