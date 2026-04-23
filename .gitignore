@@ -1,0 +1,14 @@
+# Python
+__pycache__/
+*.py[cod]
+.env
+
+# Logs
+*.log
+backend/logs/
+
+# Mac OS
+.DS_Store
+
+# Editor/IDE
+.cursor/

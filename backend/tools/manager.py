@@ -1,12 +1,13 @@
+import os
 import re
-import json
-from typing import Optional, Dict, Any, List
-from playwright.sync_api import sync_playwright
-from bs4 import BeautifulSoup
-import urllib.parse
+import sys
 import time
-from duckduckgo_search import DDGS
-from typing import List
+from typing import Optional, Dict, Any, List, Tuple
+from functools import lru_cache
+
+tools_dir = os.path.dirname(os.path.abspath(__file__))
+if tools_dir not in sys.path:
+    sys.path.insert(0, tools_dir)
 
 # Tools imports
 from futunn_company_info_scrawler import scrape_futunn_stock_info
@@ -16,6 +17,88 @@ from tradingview_stock_analysis_scrawler import scrape_tradingview_stock_analysi
 from futunn_sector_change_scrawler import scrape_futunn_sectors
 from tradingview_sector_change_scrawler import scrape_tradingview_sectors
 from yfinance_sector_change_scrawler import scrape_yfinance_sectors
+
+# ── Mapping Cache ──────────────────────────────────────────────────────────────
+
+_MAPPING_CACHE: Dict[str, List[Tuple[List[str], str]]] = {}
+
+
+def _load_mapping_file(filename: str) -> List[Tuple[List[str], str]]:
+    """Load a mapping file into [(aliases, mapped_value), ...]. Cached per file."""
+    if filename in _MAPPING_CACHE:
+        return _MAPPING_CACHE[filename]
+
+    tools_dir = os.path.dirname(os.path.abspath(__file__))
+    path = os.path.join(tools_dir, filename)
+    entries: List[Tuple[List[str], str]] = []
+
+    if not os.path.exists(path):
+        print(f"Mapping file not found: {path}")
+        return entries
+
+    try:
+        with open(path, "r", encoding="utf-8") as f:
+            for line in f:
+                line = line.strip()
+                if not line or line.startswith("#"):
+                    continue
+                if "]:" in line:
+                    aliases_part, mapped_value = line.split("]:", 1)
+                    aliases_part = aliases_part.strip()[1:]
+                    aliases = [a.strip().lower() for a in aliases_part.split(",")]
+                    mapped_value = mapped_value.strip()
+                    entries.append((aliases, mapped_value))
+        _MAPPING_CACHE[filename] = entries
+        print(f"Loaded {len(entries)} entries from {filename}")
+    except Exception as e:
+        print(f"Error reading {filename}: {e}")
+
+    return entries
+
+
+@lru_cache(maxsize=None)
+def _get_all_aliases(filename: str) -> Tuple[Tuple[str, ...], Tuple[str, ...]]:
+    """
+    Return all aliases and their corresponding mapped values as flat tuples.
+    Cached so we only load each mapping file once.
+    """
+    entries = _load_mapping_file(filename)
+    all_aliases: List[str] = []
+    all_values: List[str] = []
+    for aliases, mapped in entries:
+        all_aliases.extend(aliases)
+        all_values.extend([mapped] * len(aliases))
+    return tuple(all_aliases), tuple(all_values)
+
+
+def _fuzzy_match(query: str, filename: str, threshold: int = 72) -> Optional[str]:
+    """
+    Find the best fuzzy match for `query` in `filename`'s mapping.
+    Returns the mapped value if the best match scores >= threshold, else None.
+    """
+    from rapidfuzz import process
+
+    all_aliases, all_values = _get_all_aliases(filename)
+    if not all_aliases:
+        return None
+
+    query_lower = query.lower().strip()
+
+    # Exact match first (fast path)
+    for i, alias in enumerate(all_aliases):
+        if alias == query_lower:
+            return all_values[i]
+
+    # Fuzzy match — find best candidate
+    best = process.extractOne(query_lower, all_aliases)  # default WRatio handles typos well
+    if best is None:
+        return None
+
+    matched_alias, score, index = best
+    if score < threshold:
+        return None
+
+    return all_values[index]
 
 
 def extract_futunn_stock_code(param: str) -> Optional[str]:
@@ -31,11 +114,13 @@ def extract_tradingview_params(param: str) -> Optional[Dict[str, str]]:
     return None
 
 def get_mapped_entity(stock_name: str, platform_domain: str) -> str:
-    """Reads the correct entity mapping file and returns the translated parameter."""
-    import os
-    
-    # Determine the correct mapping file based on the platform
-    platform_lower = platform_domain.split('.')[0].lower()
+    """
+    Looks up `stock_name` in the mapping file for `platform_domain`.
+    First tries exact match, then falls back to fuzzy matching.
+
+    Returns the mapped symbol (e.g. '01024-HK') or the original name if no match found.
+    """
+    platform_lower = platform_domain.split(".")[0].lower()
     if platform_lower == "tradingview":
         mapping_file = "tradingview_mapping.txt"
     elif platform_lower == "futunn":
@@ -43,30 +128,14 @@ def get_mapped_entity(stock_name: str, platform_domain: str) -> str:
     else:
         return stock_name
 
-    if not os.path.exists(mapping_file):
-        return stock_name
-        
-    stock_lower = stock_name.lower().strip()
-    
-    try:
-        with open(mapping_file, 'r', encoding='utf-8') as f:
-            for line in f:
-                line = line.strip()
-                if not line or line.startswith("#"):
-                    continue
-                if "]:" in line and line.startswith("["):
-                    aliases_part, mapped_value = line.split("]:", 1)
-                    aliases_part = aliases_part.strip()[1:] # Remove leading '['
-                    
-                    aliases = [a.strip().lower() for a in aliases_part.split(",")]
-                    mapped_value = mapped_value.strip()
-                    
-                    if stock_lower in aliases:
-                        return mapped_value
-                            
-    except Exception as e:
-        print(f"Error reading mapping file: {e}")
-        
+    # Fuzzy match (handles typos like "kun lun" → "kunlun-energy")
+    fuzzy_result = _fuzzy_match(stock_name, mapping_file)
+    if fuzzy_result is not None:
+        print(f"Fuzzy matched '{stock_name}' → '{fuzzy_result}'")
+        return fuzzy_result
+
+    # No match at all — return as-is
+    print(f"No mapping found for '{stock_name}' — using raw name")
     return stock_name
 
 def run_scraper_manager(stock_name: str, mode: str, max_retries: int = 1) -> Any:

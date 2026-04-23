@@ -2,29 +2,19 @@
 "use client";
 
 import { useRef, useState, useCallback, useEffect } from "react";
-import { ArrowUp, ImageIcon, X, Sparkles, ChevronDown, BarChart2, TrendingUp } from "lucide-react";
-import type { ChatMode } from "@/types/chat";
+import { ArrowUp, ImageIcon, X, Sparkles } from "lucide-react";
+import { logger } from "@/lib/logger";
 
 interface PromptInputProps {
   onSend: (text: string, images: string[]) => void;
   isLoading: boolean;
-  mode: ChatMode;
-  onModeChange: (mode: ChatMode) => void;
 }
 
-const MODES: { value: ChatMode; label: string; icon: React.ReactNode }[] = [
-  { value: "none", label: "No Tool", icon: null },
-  { value: "market_discovery", label: "Market Discovery", icon: <TrendingUp size={12} /> },
-  { value: "stock_deep_analysis", label: "Stock Deep Analysis", icon: <BarChart2 size={12} /> },
-];
-
-export default function PromptInput({ onSend, isLoading, mode, onModeChange }: PromptInputProps) {
+export default function PromptInput({ onSend, isLoading }: PromptInputProps) {
   const [text, setText] = useState("");
-  const [images, setImages] = useState<string[]>([]); // base64 data URLs
-  const [modeMenuOpen, setModeMenuOpen] = useState(false);
+  const [images, setImages] = useState<string[]>([]);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const modeMenuRef = useRef<HTMLDivElement>(null);
 
   const autoResize = useCallback(() => {
     const ta = textareaRef.current;
@@ -32,18 +22,6 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 144)}px`;
   }, []);
-
-  // Close mode menu when clicking outside
-  useEffect(() => {
-    if (!modeMenuOpen) return;
-    function handler(e: MouseEvent) {
-      if (modeMenuRef.current && !modeMenuRef.current.contains(e.target as Node)) {
-        setModeMenuOpen(false);
-      }
-    }
-    document.addEventListener("mousedown", handler);
-    return () => document.removeEventListener("mousedown", handler);
-  }, [modeMenuOpen]);
 
   function handleTextChange(e: React.ChangeEvent<HTMLTextAreaElement>) {
     setText(e.target.value);
@@ -59,7 +37,7 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
 
   function doSend() {
     const trimmed = text.trim();
-    console.log("[doSend] fired →", { trimmed, imageCount: images.length, isLoading, mode });
+    logger.info("[doSend] fired →", { trimmed: trimmed.slice(0, 100), imageCount: images.length, isLoading });
     if (!trimmed && images.length === 0) return;
     if (isLoading) return;
     onSend(trimmed, images);
@@ -86,7 +64,7 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
 
   return (
     <div className="fixed inset-x-0 bottom-0 z-40 flex flex-col items-center gap-2 px-4 pb-5 pt-2">
-      {/* Gradient fade above messages — pure decoration, no interaction */}
+      {/* Gradient fade */}
       <div
         aria-hidden="true"
         className="absolute inset-x-0 bottom-0 h-28 w-full bg-gradient-to-t from-[#131314] via-[#131314]/80 to-transparent pointer-events-none"
@@ -97,7 +75,6 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
         <div className="flex flex-wrap gap-2">
           {images.map((src, i) => (
             <div key={i} className="relative">
-              {/* eslint-disable-next-line @next/next/no-img-element */}
               <img
                 src={src}
                 alt={`Upload ${i + 1}`}
@@ -136,65 +113,13 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
         onChange={handleFileChange}
       />
 
-      {/* Pill bar */}
+      {/* Prompt bar — simplified, no mode selector */}
       <div
         className={[
           "flex w-full max-w-3xl cursor-default items-end gap-2 rounded-[28px] border border-white/10 bg-[#1e1f20] px-4 py-2.5 shadow-[0_8px_32px_rgba(0,0,0,0.45)] backdrop-blur-xl",
           isLoading ? "opacity-60" : "",
         ].join(" ")}
       >
-        {/* Mode selector pill */}
-        <div className="relative mb-1" ref={modeMenuRef}>
-          <button
-            type="button"
-            aria-label="Select tool mode"
-            aria-expanded={modeMenuOpen}
-            onClick={() => setModeMenuOpen((v) => !v)}
-            className={[
-              "flex h-8 items-center gap-1.5 rounded-full border px-2.5 text-xs font-medium transition-colors",
-              mode === "none"
-                ? "border-white/15 text-zinc-400 hover:border-white/25 hover:text-zinc-200"
-                : "border-blue-400/40 text-blue-400 hover:border-blue-400/70 hover:bg-blue-400/10",
-            ].join(" ")}
-          >
-            {mode !== "none" && (
-              <span className="flex items-center gap-1">
-                {MODES.find((m) => m.value === mode)?.icon}
-                {MODES.find((m) => m.value === mode)?.label}
-              </span>
-            )}
-            {mode === "none" && "Tools"}
-            <ChevronDown size={11} className={modeMenuOpen ? "rotate-180" : ""} />
-          </button>
-
-          {modeMenuOpen && (
-            <div className="absolute bottom-full mb-2 left-0 z-50 flex flex-col gap-0.5 rounded-xl border border-white/[0.08] bg-[#1e1f20] p-1 shadow-xl min-w-44">
-              {MODES.map((m) => (
-                <button
-                  key={m.value}
-                  type="button"
-                  onClick={() => {
-                    onModeChange(m.value);
-                    setModeMenuOpen(false);
-                  }}
-                  className={[
-                    "flex w-full items-center gap-2 rounded-lg px-3 py-2 text-left text-sm transition-colors",
-                    mode === m.value
-                      ? "bg-blue-400/15 text-blue-400"
-                      : "text-zinc-300 hover:bg-white/10 hover:text-zinc-100",
-                  ].join(" ")}
-                >
-                  {m.icon && <span className="flex items-center">{m.icon}</span>}
-                  <span>{m.label}</span>
-                  {mode === m.value && (
-                    <span className="ml-auto text-[10px] text-blue-400/70">active</span>
-                  )}
-                </button>
-              ))}
-            </div>
-          )}
-        </div>
-
         {/* Image attach button */}
         <button
           type="button"
@@ -212,7 +137,7 @@ export default function PromptInput({ onSend, isLoading, mode, onModeChange }: P
           value={text}
           onChange={handleTextChange}
           onKeyDown={handleKeyDown}
-          placeholder="Ask FinChat..."
+          placeholder="Ask FinChat about companies or sectors..."
           rows={1}
           className="max-h-36 min-h-[24px] flex-1 cursor-text resize-none bg-transparent py-2 text-[15px] leading-relaxed text-zinc-100 placeholder:text-zinc-500 outline-none"
         />

@@ -1,215 +1,331 @@
 # backend/dashboard_gen.py
-
-import random
-import numpy as np
-from datetime import datetime, timedelta
+# Real data builders for CompanyInfo and Sector dashboards.
+# Replaces the old mock data generator.
 
 from models import (
-    MarketDiscoveryPayload,
-    ChartPayload,
-    CodePayload,
+    CompanyInfoPayload,
+    SectorPayload,
+    SectorItem,
     MetricCard,
+    ChartPayload,
     ChartPoint,
+    MarketDiscoveryPayload,
+    CodePayload,
     RRScore,
 )
+from typing import Any, Literal
 
-STOCKS = {
-    "TSLA": {"name": "Tesla Inc.", "base": 170.0, "currency": "$"},
-    "NVDA": {"name": "NVIDIA Corp.", "base": 880.0, "currency": "$"},
-    "AAPL": {"name": "Apple Inc.", "base": 185.0, "currency": "$"},
-    "MSFT": {"name": "Microsoft Corp.", "base": 415.0, "currency": "$"},
-    "1810.HK": {"name": "Xiaomi Corp.", "base": 16.0, "currency": "HK$"},
-    "GOOGL": {"name": "Alphabet Inc.", "base": 175.0, "currency": "$"},
-}
 
-METRIC_KEYWORDS = ["market", "discovery", "setup", "picks", "recommend", "best stock", "top"]
-CHART_KEYWORDS = ["chart", "analysis", "technical", "nvda", "stock deep", "candlestick", "candle", "price"]
-CODE_KEYWORDS = ["code", "python", "script", "run"]
+# ── Helpers ────────────────────────────────────────────────────────────────────
 
-POSITIVE_WORDS = [
-    ("beat", 0.9), ("upgrade", 0.85), ("surge", 0.9), ("bullish", 0.95),
-    ("record", 0.85), ("growth", 0.80), ("rally", 0.85), ("outperform", 0.80),
-    ("breakout", 0.80), ("strong", 0.75), ("profit", 0.80), ("innovate", 0.70),
-    ("partnership", 0.75), ("expansion", 0.70), ("buy", 0.85), ("momentum", 0.75),
+def _is_empty(val: Any) -> bool:
+    """Return True for values that carry no useful information."""
+    if val is None:
+        return True
+    s = str(val).strip()
+    return s in ("", "N/A", "n/a", "None", "-", "—", "–", "null")
+
+
+def _filter_stats(raw: dict[str, Any]) -> dict[str, Any]:
+    """Return a new dict with empty/N/A entries removed."""
+    return {k: v for k, v in raw.items() if not _is_empty(v)}
+
+
+# Preferred display order for company stats (label -> key in Futunn scraper output)
+# Keys must match the exact label text scraped from the Futunn HTML page.
+PREFERRED_STATS = [
+    ("Market Cap", "Market Cap"),
+    ("P/E (TTM)", "P/E (TTM)"),
+    ("P/E", "P/E"),
+    ("Volume", "Volume"),
+    ("52wk High", "52wk High"),
+    ("52wk Low", "52wk Low"),
+    ("Dividend Yield", "Dividend Yield"),
+    ("Beta", "Beta"),
+    ("Turnover", "Turnover"),
+    ("Turnover Ratio", "Turnover Ratio"),
+    ("Shs Float", "Shs Float"),
+    ("Revenue", "Revenue"),
+    ("Net Income", "Net Income"),
+    ("EPS", "EPS"),
+    ("EPS (TTM)", "EPS (TTM)"),
+    ("Shares Float", "Shares Float"),
+    ("Beta (1Y)", "Beta (1Y)"),
 ]
-NEGATIVE_WORDS = [
-    ("miss", -0.9), ("downgrade", -0.85), ("crash", -0.90), ("bearish", -0.95),
-    ("loss", -0.85), ("weak", -0.75), ("risk", -0.70), ("lawsuit", -0.85),
-    ("recall", -0.80), ("ban", -0.80), ("decline", -0.80), ("sell", -0.85),
-    ("regulation", -0.70), ("layoff", -0.80), ("competition", -0.60), ("overvalued", -0.70),
-]
-ALL_WORDS = POSITIVE_WORDS + NEGATIVE_WORDS
-
-SENTIMENT_LABEL = {
-    (0.60, 1.01): "Bullish",
-    (0.20, 0.60): "Slightly Bullish",
-    (-0.20, 0.20): "Neutral",
-    (-0.60, -0.20): "Slightly Bearish",
-    (-1.01, -0.60): "Bearish",
-}
 
 
-def _label_sentiment(score: float) -> str:
-    for (low, high), label in SENTIMENT_LABEL.items():
-        if low <= score <= high:
-            return label
-    return "Neutral"
+def _build_metric_cards(stats: dict[str, Any]) -> list[MetricCard]:
+    """Convert a flat stats dict into a list of MetricCards, ordered by preference."""
+    filtered = _filter_stats(stats)
+    cards: list[MetricCard] = []
+
+    # Add preferred stats first, in order
+    for label, key in PREFERRED_STATS:
+        if key in filtered and not _is_empty(filtered[key]):
+            cards.append(MetricCard(label=label, value=str(filtered[key])))
+            del filtered[key]
+
+    # Add remaining stats (alphabetically) up to 12 total
+    for key in sorted(filtered.keys()):
+        if len(cards) >= 12:
+            break
+        val = filtered[key]
+        cards.append(MetricCard(label=key, value=str(val)))
+
+    return cards
 
 
-def _make_rr(r: float, stop_pct: float) -> RRScore:
-    """Risk:Reward score card."""
-    rr = round(r / abs(stop_pct), 1)
-    if rr >= 3.0:
-        desc = "Excellent — high reward per unit risk"
-    elif rr >= 2.0:
-        desc = "Good — solid reward-to-risk setup"
-    elif rr >= 1.5:
-        desc = "Acceptable — minimal edge"
+# ── Company Info Builder ────────────────────────────────────────────────────────
+
+def build_company_info_payload(data: dict[str, Any]) -> CompanyInfoPayload | None:
+    """
+    Build a CompanyInfoPayload from Futunn scraper output.
+
+    Expected data shape (from futunn_company_info_scrawler):
+    {
+        "company_name": str,
+        "price": str,
+        "change_price": str,
+        "change_percent": str,
+        "description": str,
+        "stats": { key: value, ... },
+        "profile": { key: value, ... },
+    }
+    """
+    if not data:
+        return None
+
+    company_name = data.get("company_name", "Unknown Company")
+    symbol = data.get("symbol", "")
+    price = data.get("price", "N/A")
+    change = data.get("change_price", "N/A")
+    change_percent = data.get("change_percent", "N/A")
+    description = data.get("description", "")
+    stats_raw = data.get("stats", {})
+    profile_raw = data.get("profile", {})
+    market_cap = str(data.get("market_cap", "N/A"))
+    pe_ratio = str(data.get("pe_ratio", "N/A"))
+
+    # Build metric cards from stats (filter out N/A / empty)
+    stats = _filter_stats(stats_raw)
+    metric_cards = _build_metric_cards(stats)
+
+    # Profile dict — filter empties
+    profile = _filter_stats(profile_raw)
+
+    return CompanyInfoPayload(
+        type="company_info",
+        company_name=company_name,
+        symbol=symbol,
+        price=price,
+        change=change,
+        change_percent=change_percent,
+        market_cap=market_cap,
+        pe_ratio=pe_ratio,
+        description=description,
+        stats=metric_cards,
+        profile=profile,
+    )
+
+
+def build_tradingview_company_info_payload(data: dict[str, Any]) -> CompanyInfoPayload | None:
+    """
+    Build a CompanyInfoPayload from TradingView scraper output.
+
+    Expected data shape (from tradingview_stock_info_scrawler):
+    {
+        "symbol": "NASDAQ:NVDA",
+        "name": "NVIDIA Corp",
+        "price": {"current": "...", "currency": "...", "change_percent": "..."},
+        "key_stats": {market_cap, pe_ratio, ...},
+        "about": {sector, industry, ceo, headquarters, description, ...},
+        "technical_analysis": "...",
+        "analyst_rating": "...",
+    }
+    """
+    if not data:
+        return None
+
+    name = data.get("name", "Unknown Company")
+    symbol = data.get("symbol", "")
+    price_data = data.get("price", {})
+    key_stats = data.get("key_stats", {})
+    about = data.get("about", {})
+
+    current = price_data.get("current", "N/A")
+    currency = price_data.get("currency", "")
+    change_pct = price_data.get("change_percent", "N/A")
+    price_str = f"{current} {currency}".strip() if currency else current
+
+    market_cap = str(key_stats.get("market_cap", "N/A"))
+    pe_ratio = str(key_stats.get("pe_ratio", "N/A"))
+    description = about.get("description", "")
+    sector = about.get("sector", "")
+    industry = about.get("industry", "")
+
+    stats_dict = {
+        "Market Cap": market_cap,
+        "P/E (TTM)": pe_ratio,
+        "Sector": sector,
+        "Industry": industry,
+        "Beta (1Y)": key_stats.get("beta_1y", "N/A"),
+        "EPS (TTM)": key_stats.get("basic_eps", "N/A"),
+        "Revenue (FY)": key_stats.get("revenue_fy", "N/A"),
+        "Net Income (FY)": key_stats.get("net_income_fy", "N/A"),
+        "Shares Float": key_stats.get("shares_float", "N/A"),
+        "Dividend Yield": key_stats.get("dividend_yield", "N/A"),
+    }
+
+    profile_dict = {
+        "CEO": about.get("ceo", "N/A"),
+        "Headquarters": about.get("headquarters", "N/A"),
+        "Founded": about.get("founded", "N/A"),
+        "IPO Date": about.get("ipo_date", "N/A"),
+        "Website": about.get("website", "N/A"),
+        "Technical Analysis": data.get("technical_analysis", "N/A"),
+        "Analyst Rating": data.get("analyst_rating", "N/A"),
+    }
+
+    stats = _filter_stats(stats_dict)
+    metric_cards = _build_metric_cards(stats)
+    profile = _filter_stats(profile_dict)
+
+    return CompanyInfoPayload(
+        type="company_info",
+        company_name=name,
+        symbol=symbol,
+        price=price_str,
+        change="N/A",
+        change_percent=change_pct,
+        market_cap=market_cap,
+        pe_ratio=pe_ratio,
+        description=description,
+        stats=metric_cards,
+        profile=profile,
+    )
+
+
+# ── Sector Builder ─────────────────────────────────────────────────────────────
+
+def build_sector_payload(
+    raw_sectors: list[dict[str, Any]],
+    source: str,
+) -> SectorPayload | None:
+    """
+    Build a SectorPayload from scraper output.
+
+    source must be one of "tradingview", "futunn", "yfinance".
+    Sets interactive=True only for "tradingview".
+    """
+    if not raw_sectors:
+        return None
+
+    clean_source: Literal["tradingview", "futunn", "yfinance"]
+    if source in ("tradingview", "futunn", "yfinance"):
+        clean_source = source  # type: ignore[assignment]
     else:
-        desc = "Marginal — limited upside"
-    return RRScore(ratio=f"{rr:.1f}:1", description=desc)
+        clean_source = "futunn"  # type: ignore[assignment]
 
+    interactive = (clean_source == "tradingview")
 
-def _pick_n(weights: list, n: int) -> list:
-    """Sample n items proportionally from a weighted list."""
-    total = sum(weights)
-    probs = [w / total for w in weights]
-    indices = list(range(len(weights)))
-    chosen = set()
-    while len(chosen) < n:
-        pick = random.choices(indices, weights=probs, k=1)[0]
-        chosen.add(pick)
-    return list(chosen)
+    def _percent(val: Any) -> str:
+        if val is None:
+            return "N/A"
+        return str(val).strip() or "N/A"
 
+    def _opt_str(val: Any) -> str | None:
+        if _is_empty(val):
+            return None
+        return str(val).strip()
 
-def generate(payload_type: str | None) -> MarketDiscoveryPayload | ChartPayload | CodePayload | None:
-    if payload_type == "metrics":
-        symbol = random.choice(["TSLA", "NVDA", "1810.HK"])
-        info = STOCKS[symbol]
-        profit = random.choice(["15%", "22%", "37%", "44%", "28%"])
-        base = info["base"]
-        buy = round(base * random.uniform(0.96, 1.0), 2)
-        stop_pct = random.choice([-9, -10, -8])
-        stop_val = round(buy * (1 + stop_pct / 100), 2)
-        take_val = round(buy * (1 + float(profit.rstrip("%")) / 100), 2)
-        currency = info["currency"]
-        profit_val = round(take_val - buy, 2)
-        risk_val = round(buy - stop_val, 2)
-
-        return MarketDiscoveryPayload(
-            type="metrics",
-            symbol=symbol,
-            name=info["name"],
-            metrics=[
-                MetricCard(label="Expected Profit", value=profit, delta=f"+{profit}"),
-                MetricCard(label="Suggested Buy", value=f"{currency}{buy}"),
-                MetricCard(label="Take Profit", value=f"{currency}{take_val}", delta=f"+{profit}"),
-                MetricCard(label="Stop Loss", value=f"{currency}{stop_val}", delta=f"{stop_pct}%", delta_color="inverse"),
-                MetricCard(label="Profit/Loss Ratio", value=f"{currency}{profit_val}", delta=f"{currency}{risk_val} risk"),
-                MetricCard(label="Win Rate Est.", value=random.choice(["55%", "60%", "62%", "58%"])),
-            ],
-            rr_score=_make_rr(float(profit.rstrip("%")), stop_pct),
+    items: list[SectorItem] = []
+    for raw in raw_sectors:
+        item = SectorItem(
+            sector=str(raw.get("sector", "Unknown")).strip(),
+            change_percent=_percent(raw.get("change_percent")),
+            link=str(raw.get("link", "")).strip() or "N/A",
         )
 
+        # Fill optional fields only when they exist in the raw data
+        if interactive:
+            item.market_cap = _opt_str(raw.get("market_cap"))
+            item.dividend_yield = _opt_str(raw.get("dividend_yield"))
+            item.volume = _opt_str(raw.get("volume"))
+            item.industries_count = _opt_str(raw.get("industries_count"))
+            item.stocks_count = _opt_str(raw.get("stocks_count"))
+            item.perf_1w = _opt_str(raw.get("perf_1w"))
+            item.perf_1m = _opt_str(raw.get("perf_1m"))
+            item.perf_3m = _opt_str(raw.get("perf_3m"))
+            item.perf_6m = _opt_str(raw.get("perf_6m"))
+            item.perf_ytd = _opt_str(raw.get("perf_ytd"))
+            item.perf_1y = _opt_str(raw.get("perf_1y"))
+            item.perf_5y = _opt_str(raw.get("perf_5y"))
+            item.perf_10y = _opt_str(raw.get("perf_10y"))
+            item.perf_all_time = _opt_str(raw.get("perf_all_time"))
+
+        items.append(item)
+
+    return SectorPayload(
+        type="sector",
+        source=clean_source,
+        interactive=interactive,
+        sectors=items,
+    )
+
+
+# ── Legacy mock builders (kept for backward compatibility) ─────────────────────
+
+def generate(payload_type: str | None):
+    """Legacy mock builder — kept so existing tests don't break."""
+    import random
+    import numpy as np
+    from datetime import datetime, timedelta
+
+    if payload_type == "metrics":
+        return MarketDiscoveryPayload(
+            type="metrics",
+            symbol="MOCK",
+            name="Mock Stock",
+            metrics=[
+                MetricCard(label="Expected Profit", value="15%"),
+                MetricCard(label="Suggested Buy", value="$100"),
+                MetricCard(label="Take Profit", value="$115"),
+                MetricCard(label="Stop Loss", value="$90", delta="-10%", delta_color="inverse"),
+                MetricCard(label="Win Rate", value="60%"),
+            ],
+            rr_score=RRScore(ratio="2.0:1", description="Good risk:reward"),
+        )
     if payload_type == "chart":
-        symbol = random.choice(["NVDA", "TSLA", "AAPL", "MSFT", "GOOGL"])
-        info = STOCKS.get(symbol, {"name": symbol, "base": 100.0})
-        np.random.seed(random.randint(0, 9999))
         n = 30
+        base = 100.0
         dates = [
             (datetime.today() - timedelta(days=n - 1 - i)).strftime("%Y-%m-%d")
             for i in range(n)
         ]
-        base_val = info["base"]
-        open_vals = (np.random.uniform(base_val * 0.93, base_val * 1.07, n)).tolist()
+        np.random.seed(42)
+        open_vals = (np.random.uniform(base * 0.93, base * 1.07, n)).tolist()
         close_vals = [o + random.uniform(-5, 5) for o in open_vals]
         high_vals = [max(o, c) + random.uniform(0, 4) for o, c in zip(open_vals, close_vals)]
         low_vals = [min(o, c) - random.uniform(0, 4) for o, c in zip(open_vals, close_vals)]
         chart_data = [
             ChartPoint(
-                date=d,
-                open=round(o, 2),
-                high=round(h, 2),
-                low=round(l, 2),
-                close=round(c, 2),
+                date=d, open=round(o, 2), high=round(h, 2),
+                low=round(l, 2), close=round(c, 2),
             )
             for d, o, h, l, c in zip(dates, open_vals, high_vals, low_vals, close_vals)
         ]
-
-        # ── Key stats (technical indicators) ──────────────────────────
-        rsi = round(random.uniform(35, 75), 1)
-        sma20 = round(base_val * random.uniform(0.97, 1.03), 2)
-        sma50 = round(base_val * random.uniform(0.95, 1.05), 2)
-        volume_ratio = round(random.uniform(0.7, 2.5), 1)
-        avg_vol = int(random.uniform(30_000_000, 80_000_000))
-        macd_hist = round(random.uniform(-3, 3), 2)
-        key_stats = [
-            MetricCard(label="RSI (14)", value=str(rsi),
-                       delta="Overbought" if rsi > 70 else ("Oversold" if rsi < 30 else "Neutral")),
-            MetricCard(label="SMA 20", value=f"${sma20}"),
-            MetricCard(label="SMA 50", value=f"${sma50}"),
-            MetricCard(label="Volume vs Avg", value=f"{volume_ratio}x",
-                       delta="High" if volume_ratio > 1.5 else "Normal"),
-            MetricCard(label="Avg Volume", value=f"{avg_vol:,.0f}"),
-            MetricCard(label="MACD Histogram", value=str(macd_hist),
-                       delta_color="normal" if macd_hist > 0 else "inverse"),
-        ]
-
-        # ── Sentiment: word cloud + frequency bars ─────────────────────
-        news_count = random.randint(25, 120)
-        sentiment_score = round(random.uniform(-0.5, 0.8), 2)
-        word_weights = [abs(s) for _, s in ALL_WORDS]
-        wc_indices = _pick_n(word_weights, 20)
-        word_cloud = [
-            {
-                "word": ALL_WORDS[i][0],
-                "score": ALL_WORDS[i][1],
-                "size": round(12 + abs(ALL_WORDS[i][1]) * 22 + random.uniform(0, 8), 1),
-            }
-            for i in wc_indices
-        ]
-        pos_indices = _pick_n([s for _, s in POSITIVE_WORDS], 6)
-        neg_indices = _pick_n([abs(s) for _, s in NEGATIVE_WORDS], 6)
-        top_positive = [
-            {"word": POSITIVE_WORDS[i][0], "count": random.randint(3, 18)}
-            for i in pos_indices
-        ]
-        top_negative = [
-            {"word": NEGATIVE_WORDS[i][0], "count": random.randint(2, 12)}
-            for i in neg_indices
-        ]
-
         return ChartPayload(
             type="chart",
-            symbol=symbol,
-            name=info["name"],
+            symbol="MOCK",
+            name="Mock Stock",
             chart_data=chart_data,
-            key_stats=key_stats,
-            sentiment_score=sentiment_score,
-            sentiment_label=_label_sentiment(sentiment_score),
-            word_cloud=word_cloud,
-            top_positive=top_positive,
-            top_negative=top_negative,
-            news_count=news_count,
+            key_stats=[MetricCard(label="RSI", value="55")],
         )
-
     if payload_type == "code":
         return CodePayload(
             type="code",
             language="python",
-            code='import ollama\n\nresponse = ollama.chat(\n    model="mistral-small3.1:24b-instruct-2503-q4_K_M",\n    messages=[{"role": "user", "content": "Hello!"}],\n)\nprint(response["message"]["content"])',
-            description="Query Ollama mistral-small3.1 24B Q4 via the official SDK.",
+            code="# mock code",
+            description="Mock code block",
         )
-
-    return None
-
-
-def detect_dashboard(prompt: str) -> str | None:
-    lower = prompt.lower()
-    if any(kw in lower for kw in CHART_KEYWORDS):
-        return "chart"
-    if any(kw in lower for kw in METRIC_KEYWORDS):
-        return "metrics"
-    if any(kw in lower for kw in CODE_KEYWORDS):
-        return "code"
     return None

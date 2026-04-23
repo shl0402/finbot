@@ -197,6 +197,7 @@ def scrape_futunn_stock_info(stock_code: str, headless: bool = True) -> dict:
 
         stock_data = {
             "company_name": _get_text_or_na(page, '.detail-top-head h2.name'),
+            "symbol": stock_code,
             "price": _extract_price(page),
             "change_price": _get_text_or_na(page, '.price-current .change-price'),
             "change_percent": _get_text_or_na(page, '.price-current .change-ratio'),
