@@ -1,0 +1,16 @@
+from pathlib import Path
+import joblib
+import tensorflow as tf
+
+MODEL_DIR = Path(__file__).parent / "models"
+
+# Load models
+gbm = joblib.load(MODEL_DIR / "gbm_model.pkl")
+lstm = tf.keras.models.load_model(MODEL_DIR / "lstm_model.keras")
+meta = joblib.load(MODEL_DIR / "meta_model.pkl")
+price_scaler = joblib.load(MODEL_DIR / "global_price_scaler.pkl")
+sent_scaler = joblib.load(MODEL_DIR / "global_sent_scaler.pkl")
+metadata = joblib.load(MODEL_DIR / "metadata.pkl")
+
+LOOKBACK = metadata['lookback']
+THRESHOLD = metadata['threshold']
