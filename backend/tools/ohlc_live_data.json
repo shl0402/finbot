@@ -1,0 +1,46 @@
+[
+  {
+    "ticker": "AAPL",
+    "timestamp": "2026-04-28T16:35:50.588480",
+    "open": 267.16,
+    "high": 267.96,
+    "low": 267.05,
+    "close": 267.68,
+    "current_price": 267.61,
+    "volume": 4077895,
+    "previous_close": 271.06
+  },
+  {
+    "ticker": "TSLA",
+    "timestamp": "2026-04-28T16:35:51.381102",
+    "open": 379.07,
+    "high": 379.96,
+    "low": 378.5,
+    "close": 378.7,
+    "current_price": 378.67,
+    "volume": 4147136,
+    "previous_close": 376.3
+  },
+  {
+    "ticker": "0005.HK",
+    "timestamp": "2026-04-28T16:35:51.942260",
+    "open": 140.5,
+    "high": 141.0,
+    "low": 140.3,
+    "close": 141.0,
+    "current_price": 140.6,
+    "volume": 1379057,
+    "previous_close": 140.2
+  },
+  {
+    "ticker": "0700.HK",
+    "timestamp": "2026-04-28T16:35:54.058797",
+    "open": 473.4,
+    "high": 474.0,
+    "low": 472.8,
+    "close": 473.8,
+    "current_price": 473.8,
+    "volume": 1844477,
+    "previous_close": 478.6
+  }
+]
