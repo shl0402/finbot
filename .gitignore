@@ -14,4 +14,4 @@ backend/logs/
 .cursor/
 
 # Virtual environment
-venv/
+backend/venv/
