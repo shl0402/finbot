@@ -11,6 +11,7 @@
 import os
 import re
 import sys
+import time
 
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
@@ -105,12 +106,43 @@ def _gen_content(
         }
 
     log_respond.debug("Calling Gemini — prompt length: %d chars", len(prompt))
-    resp = requests.post(
-        GEMINI_API_URL,
-        json=payload,
-        headers={"Content-Type": "application/json"},
-        timeout=60,
-    )
+    last_exc: Exception | None = None
+    for attempt in range(3):
+        try:
+            resp = requests.post(
+                GEMINI_API_URL,
+                json=payload,
+                headers={"Content-Type": "application/json"},
+                timeout=60,
+            )
+        except requests.exceptions.RequestException as exc:
+            log_respond.warning(
+                "Gemini request attempt %d/3 failed (network error): %s",
+                attempt + 1, exc,
+            )
+            last_exc = exc
+            if attempt < 2:
+                time.sleep(1.5 ** attempt)
+            continue
+
+        if resp.status_code == 200:
+            break
+
+        is_server_error = 500 <= resp.status_code < 600
+        log_respond.warning(
+            "Gemini API attempt %d/3 returned %d: %s (server_error=%s)",
+            attempt + 1, resp.status_code, resp.text[:200], is_server_error,
+        )
+        last_exc = RuntimeError(f"Gemini API returned {resp.status_code}: {resp.text}")
+
+        if not is_server_error or attempt >= 2:
+            break
+        time.sleep(1.5 ** attempt)
+
+    else:
+        # all 3 attempts exhausted
+        log_respond.error("Gemini API failed after 3 attempts")
+        raise RuntimeError("Gemini API failed after 3 attempts") from last_exc
 
     if resp.status_code != 200:
         log_respond.error("Gemini API error %d: %s", resp.status_code, resp.text)
