@@ -1,6 +1,7 @@
 import yfinance as yf
 import pandas as pd
 from datetime import datetime, timedelta
+import json
 from typing import Dict, Optional, List, Union
 
 def get_history(ticker: str, days: int = 10) -> Optional[Dict]:
@@ -12,7 +13,7 @@ def get_history(ticker: str, days: int = 10) -> Optional[Dict]:
     """
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period=f"{days}d")
+        hist = stock.history(period=f"{days}d", interval="1h")
 
         if hist.empty:
             print(f"No data for {ticker}")
@@ -37,3 +38,9 @@ def get_history(ticker: str, days: int = 10) -> Optional[Dict]:
 def get_multiple_history(tickers: List[str], days: int = 10) -> List[Dict]:
     """Get historical data for multiple tickers."""
     return [get_history(t, days) for t in tickers if get_history(t, days)]
+
+if __name__ == '__main__':
+    tickers = ["AAPL", "TSLA", "0005.HK", "0700.HK"]
+    data = get_multiple_history(tickers)
+    with open("ohlc_price_history.json", 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)

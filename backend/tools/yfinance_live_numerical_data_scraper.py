@@ -1,5 +1,5 @@
 import yfinance as yf
-import pandas as pd
+import json
 from datetime import datetime
 from typing import Dict, Optional, List, Any
 
@@ -12,7 +12,7 @@ def get_ohlc(ticker: str) -> Optional[Dict]:
     """
     try:
         stock = yf.Ticker(ticker)
-        hist = stock.history(period="1d")
+        hist = stock.history(period="1d", interval="1h")
 
         if hist.empty:
             print(f"No data for {ticker}")
@@ -47,3 +47,9 @@ def get_multiple_ohlc(tickers: List[str]) -> list[Any]:
             data.append(ohlc)
 
     return data
+
+if __name__ == '__main__':
+    tickers = ["AAPL", "TSLA", "0005.HK", "0700.HK"]
+    data = get_multiple_ohlc(tickers)
+    with open("ohlc_live_data.json", 'w', encoding='utf-8') as f:
+        json.dump(data, f, indent=2, ensure_ascii=False)

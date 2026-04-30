@@ -12,21 +12,25 @@ function format(...args: unknown[]): string {
 }
 
 function postToServer(level: string, message: string, stack?: string) {
-  const postUrl = "/api/log";
-  logger.debug("postToServer — level=%s url=%s message=%s", level, postUrl, message.slice(0, 100));
-  fetch(postUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({
-      level,
-      message,
-      stack,
-      url: window.location.href,
-      userAgent: navigator.userAgent,
-    }),
-  }).catch(() => {
+  try {
+    const postUrl = `${process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000"}/api/log`;
+    logger.debug("postToServer — level=%s url=%s message=%s", level, postUrl, message.slice(0, 100));
+    fetch(postUrl, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        level,
+        message,
+        stack,
+        url: window.location.href,
+        userAgent: navigator.userAgent,
+      }),
+    }).catch(() => {
+      // swallow — never let logging itself break the app
+    });
+  } catch {
     // swallow — never let logging itself break the app
-  });
+  }
 }
 
 export const logger = {

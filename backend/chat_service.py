@@ -15,9 +15,10 @@ import sys
 _project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 if _project_root not in sys.path:
     sys.path.insert(0, _project_root)
+import asyncio
 import json
 import logging
-from typing import Any, Optional
+from typing import Any, AsyncGenerator, Optional
 
 import requests
 import yaml
@@ -35,6 +36,7 @@ from dashboard_gen import (
     build_company_info_payload,
     build_tradingview_company_info_payload,
     build_sector_payload,
+    build_stock_analysis_payload,
 )
 
 # ── Env ────────────────────────────────────────────────────────────────────────
@@ -162,6 +164,37 @@ def _truncate_preview(data: Any, max_len: int = 200) -> str:
     return s[:max_len] + "..."
 
 
+def _truncate_tool_data(data: dict, max_len: int = 3000) -> str:
+    """
+    Truncate tool_data JSON for the response prompt, cutting at safe JSON boundaries
+    (field ends) so the AI always receives valid JSON.
+    """
+    if not isinstance(data, dict):
+        return _truncate_preview(data, max_len)
+
+    s = json.dumps(data, ensure_ascii=False)
+    if len(s) <= max_len:
+        return s
+
+    # Keep the most important fields: model_prediction, price_summary, metadata
+    priority_keys = ["model_prediction", "price_summary", "metadata", "ticker"]
+    result: dict = {}
+    remaining = max_len
+
+    for key in priority_keys:
+        if key in data:
+            val_str = json.dumps({key: data[key]}, ensure_ascii=False)
+            if len(val_str) + 2 <= remaining:  # +2 for outer braces
+                result[key] = data[key]
+                remaining -= len(val_str)
+
+    # Add a note about truncated data
+    s_result = json.dumps(result, ensure_ascii=False)
+    if len(s_result) + 40 < max_len:
+        s_result = s_result[:-1] + f', "_truncated": true, "_original_len": {len(s)}}}'
+    return s_result
+
+
 # ── Intent Routing ──────────────────────────────────────────────────────────────
 
 def route_intent(user_message: str) -> dict[str, Any]:
@@ -180,7 +213,7 @@ def route_intent(user_message: str) -> dict[str, Any]:
 
         parsed = _parse_json_from_text(raw)
         mode = parsed.get("mode", "none")
-        if mode not in ("company_info", "sector_analysis", "none"):
+        if mode not in ("company_info", "sector_analysis", "stock_analysis", "none"):
             mode = "none"
 
         result = {
@@ -226,7 +259,7 @@ def _infer_exchange(mapped_value: str) -> str:
     return "futunn"
 
 
-def _run_company_info_chain(stock_name: str) -> tuple[dict, str]:
+async def _run_company_info_chain(stock_name: str) -> tuple[dict, str]:
     """
     Company info scraper chain with exchange-aware routing.
 
@@ -238,12 +271,14 @@ def _run_company_info_chain(stock_name: str) -> tuple[dict, str]:
       3. If primary scraper fails, fall back to the other platform.
 
     Returns (result, source_tag) where source_tag is "futunn" or "tradingview".
+
+    Playwright scrapers use sync API, so they are offloaded to a thread pool via
+    asyncio.to_thread() to avoid blocking the event loop.
     """
-    from tools.manager import run_scraper_manager, get_mapped_entity
+    from tools.manager import get_mapped_entity
 
     log_tools.info("Company info chain for: %s", stock_name)
 
-    # Step 1: Get mapped values for both platforms
     futunn_mapped = get_mapped_entity(stock_name, "futunn.com")
     tv_mapped = get_mapped_entity(stock_name, "tradingview.com")
 
@@ -258,7 +293,7 @@ def _run_company_info_chain(stock_name: str) -> tuple[dict, str]:
 
     for scraper_mode in [primary_mode, fallback_mode]:
         tried.append(scraper_mode)
-        result = _try_company_scraper(stock_name, scraper_mode)
+        result = await asyncio.to_thread(_try_company_scraper, stock_name, scraper_mode)
         if result and isinstance(result, dict) and (result.get("company_name") or result.get("name")):
             source = "futunn" if scraper_mode == "futunn_info" else "tradingview"
             log_tools.info("%s company info SUCCESS", source)
@@ -283,30 +318,33 @@ def _try_company_scraper(stock_name: str, mode: str) -> dict:
         return {}
 
 
-def _run_sector_chain() -> tuple[list, str]:
+async def _run_sector_chain() -> tuple[list, str]:
     """
     Try sector scrapers in order: TradingView -> Futunn -> YFinance.
     Returns (result_list, source_tag).
-    """
-    try:
-        from tools.manager import run_scraper_manager
 
+    Playwright scrapers use sync API, so they are offloaded to a thread pool via
+    asyncio.to_thread() to avoid blocking the event loop.
+    """
+    from tools.manager import run_scraper_manager
+
+    try:
         log_tools.info("Trying TradingView sector scraper...")
-        result = run_scraper_manager("dummy", "tradingview_sectors")
+        result = await asyncio.to_thread(run_scraper_manager, "dummy", "tradingview_sectors")
         if result and isinstance(result, list) and len(result) > 0:
             log_tools.info("TradingView sectors SUCCESS — %d sectors", len(result))
             return result, "tradingview"
         log_tools.warning("TradingView returned empty — trying Futunn next")
 
         log_tools.info("Trying Futunn sector scraper...")
-        result = run_scraper_manager("dummy", "futunn_sectors")
+        result = await asyncio.to_thread(run_scraper_manager, "dummy", "futunn_sectors")
         if result and isinstance(result, list) and len(result) > 0:
             log_tools.info("Futunn sectors SUCCESS — %d sectors", len(result))
             return result, "futunn"
         log_tools.warning("Futunn returned empty — trying YFinance next")
 
         log_tools.info("Trying YFinance sector scraper...")
-        result = run_scraper_manager("dummy", "yfinance_sectors")
+        result = await asyncio.to_thread(run_scraper_manager, "dummy", "yfinance_sectors")
         if result and isinstance(result, list) and len(result) > 0:
             log_tools.info("YFinance sectors SUCCESS — %d sectors", len(result))
             return result, "yfinance"
@@ -316,6 +354,56 @@ def _run_sector_chain() -> tuple[list, str]:
         log_tools.exception("Sector chain FAILED: %s", exc)
 
     return [], "none"
+
+
+async def _run_stock_analysis_chain(
+    stock_name: str,
+) -> AsyncGenerator[tuple[dict, str, dict] | tuple[str, dict], None]:
+    """
+    Async generator that yields pipeline steps as they complete, then yields the
+    final result.
+
+    Yields:
+      - ("step", step_dict): a real-time pipeline step
+      - ("result", (result_dict, source_tag)): the final result
+
+    Usage:
+        async for event in _run_stock_analysis_chain("AAPL"):
+            if event[0] == "result":
+                result, source = event[1]
+            else:
+                step = event[1]  # {"step": "...", "status": "...", "message": "..."}
+    """
+    from tools.manager import get_mapped_entity
+    from tools import stock_analysis as sa
+
+    log_tools.info("Stock analysis chain for: %s", stock_name)
+
+    futunn_mapped = get_mapped_entity(stock_name, "futunn.com")
+    ticker = futunn_mapped.strip()
+    if not ticker or ticker == stock_name:
+        ticker = stock_name.strip()
+
+    log_tools.info("Stock analysis using ticker: %s (from '%s')", ticker, stock_name)
+
+    try:
+        async for event in sa.run_prediction(ticker, num_news=30):
+            if isinstance(event, tuple) and event[0] == "result":
+                result = event[1]
+                log_tools.info(
+                    "Stock analysis pipeline SUCCESS for %s — signal=%s prob=%.4f",
+                    ticker, result.get("model_prediction", {}).get("signal", "?"),
+                    result.get("model_prediction", {}).get("probability_up", 0.0)
+                )
+                yield ("result", (result, "stock_analysis"))
+            else:
+                # event is a step dict: {"step": "...", "status": "...", "message": "..."}
+                yield ("step", event)
+
+    except Exception as exc:
+        log_tools.exception("Stock analysis chain FAILED for %s: %s", ticker, exc)
+        yield ("step", {"step": "model", "status": "failed", "message": str(exc)})
+        yield ("result", ({}, "none"))
 
 
 # ── Load Prompts from YAML ──────────────────────────────────────────────────────
@@ -372,6 +460,12 @@ def generate_response(
             tool_data=tool_str,
             user_message=user_message,
         )
+    elif mode == "stock_analysis":
+        tool_str = _truncate_tool_data(tool_data, max_len=3000)
+        prompt = RESPONSE_TEMPLATES["stock_analysis"].format(
+            tool_data=tool_str,
+            user_message=user_message,
+        )
     else:
         prompt = RESPONSE_TEMPLATES["none"].format(user_message=user_message)
 
@@ -392,7 +486,7 @@ def generate_response(
 
 # ── Main Pipeline ──────────────────────────────────────────────────────────────
 
-def chat(req: ChatRequest):
+async def chat(req: ChatRequest) -> AsyncGenerator[ThinkingStep | ChatResponseV2, None]:
     """
     FinBot pipeline entrypoint. Yields ThinkingStep objects in real-time as they
     are produced, then yields a ChatResponseV2 at the end.
@@ -490,7 +584,7 @@ def chat(req: ChatRequest):
         )
         step_num += 1
 
-        raw_data, tool_source = _run_company_info_chain(stock_name)
+        raw_data, tool_source = await _run_company_info_chain(stock_name)
         if raw_data and tool_source != "none":
             if tool_source == "futunn":
                 dashboard_payload = build_company_info_payload(raw_data)
@@ -541,7 +635,7 @@ def chat(req: ChatRequest):
         )
         step_num += 1
 
-        raw_sectors, tool_source = _run_sector_chain()
+        raw_sectors, tool_source = await _run_sector_chain()
         if raw_sectors:
             dashboard_payload = build_sector_payload(raw_sectors, tool_source)
             tool_data = raw_sectors
@@ -559,6 +653,95 @@ def chat(req: ChatRequest):
                 phase="tool_execution",
                 status="failed",
                 content="All sector scrapers failed (TradingView, Futunn, YFinance). No data available.",
+            )
+        step_num += 1
+
+    elif mode == "stock_analysis":
+        stock_name = route["stock_name"] or user_message
+        from tools.manager import get_mapped_entity
+        futunn_mapped = get_mapped_entity(stock_name, "futunn.com")
+        tv_mapped = get_mapped_entity(stock_name, "tradingview.com")
+        ticker = futunn_mapped.strip() if futunn_mapped and futunn_mapped != stock_name else stock_name.strip()
+        sel_content = (
+            f"Selected mode: STOCK ANALYSIS. "
+            f"Analysing '{stock_name}' (mapped ticker: '{ticker}'). "
+            f"Pipeline: News Scraper → LLM Labeler → Sentiment Analyzer → "
+            f"Ontology Engine → Daily Aggregator → Price Fetcher → Ensemble Model. "
+            f"Futunn code: '{futunn_mapped}' | TradingView code: '{tv_mapped}'."
+        )
+        yield _make_step(
+            step_num=step_num,
+            phase="tool_selection",
+            status="success",
+            content=sel_content,
+            tool_used="stock_analysis_pipeline",
+        )
+        step_num += 1
+
+        # Yield pipeline steps as they arrive in real-time
+        raw_result = {}
+        tool_source = "none"
+        # Valid ThinkingStep phase values that match internal pipeline step names
+        _PIPELINE_PHASES = frozenset({
+            "news_scraping", "llm_labeling", "sentiment",
+            "ontology", "daily_agg", "price_fetch", "model",
+        })
+        async for event in _run_stock_analysis_chain(stock_name):
+            if event[0] == "result":
+                raw_result, tool_source = event[1]
+            else:
+                ps = event[1]  # step dict: {"step": "...", "status": "...", "message": "..."}
+                step_name = ps["step"]
+                # Skip the terminal "done" step — it is not a ThinkingStep phase
+                if step_name == "done":
+                    continue
+                raw_status = ps["status"]
+                if raw_status == "start":
+                    mapped_status = "active"
+                elif raw_status == "complete":
+                    mapped_status = "success"
+                else:
+                    mapped_status = raw_status
+
+                # Map pipeline phase names to the ThinkingStep literal phases.
+                # Pipeline phases (news_scraping, llm_labeling, etc.) are valid.
+                # Anything else (e.g., unexpected internal names) is remapped to tool_execution
+                # to avoid Pydantic ValidationError.
+                mapped_phase = step_name if step_name in _PIPELINE_PHASES else "tool_execution"
+
+                yield _make_step(
+                    step_num=step_num,
+                    phase=mapped_phase,
+                    status=mapped_status,
+                    content=ps.get("message", ""),
+                    tool_used=step_name,
+                    tool_result_preview=ps.get("message") if mapped_status in ("success", "failed") else None,
+                )
+                step_num += 1
+
+        if raw_result and tool_source == "stock_analysis":
+            dashboard_payload = build_stock_analysis_payload(raw_result)
+            tool_data = raw_result
+            mp = raw_result.get("model_prediction", {})
+            signal = mp.get("signal", "?")
+            prob = mp.get("probability_up", 0.0)
+            yield _make_step(
+                step_num=step_num,
+                phase="tool_execution",
+                status="success",
+                content=f"Stock analysis complete — {signal} signal (probability_up={prob:.4f})",
+                tool_used="ensemble_model",
+                tool_result_preview=f"{{\"signal\": \"{signal}\", \"probability_up\": {prob:.4f}}}",
+            )
+        else:
+            dashboard_payload = None
+            tool_data = {}
+            yield _make_step(
+                step_num=step_num,
+                phase="tool_execution",
+                status="failed",
+                content=f"Stock analysis pipeline failed for '{stock_name}'. No data available.",
+                tool_used="stock_analysis_pipeline",
             )
         step_num += 1
 
@@ -615,15 +798,15 @@ def chat(req: ChatRequest):
 
 # ── Legacy wrapper (keeps existing /api/chat endpoint working) ─────────────────
 
-def chat_legacy(req: ChatRequest) -> ChatResponse:
+async def chat_legacy(req: ChatRequest) -> ChatResponse:
     """
-    Legacy wrapper. Consumes the chat() generator to collect all steps,
+    Legacy wrapper. Consumes the async chat() generator to collect all steps,
     then returns the old ChatResponse shape.
     """
     steps: list[ThinkingStep] = []
     final_result: ChatResponseV2 | None = None
 
-    for item in chat(req):
+    async for item in chat(req):
         if isinstance(item, ChatResponseV2):
             final_result = item
         else:
@@ -641,15 +824,3 @@ def chat_legacy(req: ChatRequest) -> ChatResponse:
     )
 
 
-# ── Legacy wrapper (keeps existing /api/chat endpoint working) ─────────────────
-
-def chat_legacy(req: ChatRequest) -> ChatResponse:
-    """
-    Legacy wrapper. Runs the pipeline but returns the old ChatResponse shape.
-    Used by the existing POST /api/chat endpoint.
-    """
-    v2 = chat(req)
-    return ChatResponse(
-        reply_text=v2.reply_text,
-        dashboard_payload=v2.dashboard_payload,
-    )

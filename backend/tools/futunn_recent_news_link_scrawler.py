@@ -74,14 +74,20 @@ def scrape_futunn_stock_news(stock_code: str, num_news: int = 20, headless: bool
                 let sourceText = "N/A";
                 let timeText = "N/A";
                 
-                // The source and time are mapped in spans inside .news-meta
+                // The source is explicitly marked, time is the remaining span
                 const metaSpans = item.querySelectorAll('.news-meta span.ellipsis');
                 metaSpans.forEach(span => {
                     if (span.classList.contains('news-source')) {
                         sourceText = span.textContent.trim();
-                    } else {
-                        // The time span does not contain 'news-source'
+                    } else if (span.classList.contains('news-time')) {
+                        // Prefer the dedicated time span
                         timeText = span.textContent.trim();
+                    } else {
+                        // Fallback: any other ellipsis span is likely the time
+                        // (some items may not have a .news-time class)
+                        if (!timeText || timeText === "N/A") {
+                            timeText = span.textContent.trim();
+                        }
                     }
                 });
 
@@ -108,5 +114,5 @@ def scrape_futunn_stock_news(stock_code: str, num_news: int = 20, headless: bool
 
 if __name__ == "__main__":
     test_url = "01810-HK"
-    result = scrape_futunn_stock_news("01810-HK", num_news=30, headless=True)
+    result = scrape_futunn_stock_news("01810-HK", num_news=100, headless=True)
     print(json.dumps(result, indent=4, ensure_ascii=False))

@@ -146,6 +146,7 @@ export default function PromptInput({ onSend, isLoading }: PromptInputProps) {
         <button
           type="button"
           aria-label="Send message"
+          disabled={!canSend}
           onClick={doSend}
           className={[
             "mb-1 flex h-9 w-9 cursor-pointer items-center justify-center rounded-full border-none transition-all active:scale-95",

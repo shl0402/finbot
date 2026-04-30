@@ -14,6 +14,7 @@ import type {
   ChatMode,
   ChatHistoryItem,
   ThinkingStep,
+  StockAnalysisPayload,
 } from "@/types/chat";
 import { logger } from "./logger";
 
@@ -86,9 +87,9 @@ function normalizeSectorItem(raw: Record<string, unknown>): Record<string, unkno
 }
 
 function normalizeSectorPayload(o: Record<string, unknown>): SectorPayload {
-  const rawSectors = o.sectors;
+  const rawSectors = o.sectors as Array<Record<string, unknown>> | undefined;
   const sectors = Array.isArray(rawSectors)
-    ? rawSectors.map((x) => normalizeSectorItem(x as Record<string, unknown>)) as SectorPayload["sectors"]
+    ? (rawSectors.map((x) => normalizeSectorItem(x)) as unknown as SectorPayload["sectors"])
     : [];
 
   return {
@@ -179,6 +180,76 @@ function normalizeDashboardPayload(raw: unknown): DashboardPayload {
     return normalizeSectorPayload(o);
   }
 
+  if (t === "stock_analysis") {
+    const rawNewsItems = o.news_items;
+    const newsItems = Array.isArray(rawNewsItems)
+      ? rawNewsItems.map((n: Record<string, unknown>) => ({
+          title: String(n.title ?? ""),
+          time: String(n.time ?? ""),
+          source: String(n.source ?? ""),
+          link: String(n.link ?? ""),
+          shortDescription: String(n.short_description ?? ""),
+          parsedDate: String(n.parsed_date ?? ""),
+          relationId: String(n.relation_id ?? "0.0"),
+          fixedSentimentApplicable: Boolean(n.fixed_sentiment_applicable ?? false),
+          relatedCompany: Array.isArray(n.related_company) ? n.related_company.map(String) : [],
+          chainOfThought: String(n.chain_of_thought ?? ""),
+          confidenceScore: Number(n.confidence_score ?? 0),
+          sentimentLabel: String(n.sentiment_label ?? "neutral"),
+          rawSentimentScore: Number(n.raw_sentiment_score ?? 0),
+          positiveProb: Number(n.positive_prob ?? 0),
+          negativeProb: Number(n.negative_prob ?? 0),
+          neutralProb: Number(n.neutral_prob ?? 0),
+          ontologySentiment: Number(n.ontology_sentiment ?? 0),
+        }))
+      : [];
+
+    const rawOhlcv = o.ohlcv_data ?? o.ohlcvData ?? [];
+    const ohlcvData = Array.isArray(rawOhlcv)
+      ? rawOhlcv.map((b: Record<string, unknown>) => ({
+          date: String(b.date ?? ""),
+          open: Number(b.open ?? 0),
+          high: Number(b.high ?? 0),
+          low: Number(b.low ?? 0),
+          close: Number(b.close ?? 0),
+          volume: Number(b.volume ?? 0),
+        }))
+      : [];
+
+    const rawPred = (o.prediction_bar ?? o.predictionBar ?? {}) as Record<string, unknown>;
+    const predictionBar = {
+      signal: String(rawPred.signal ?? o.signal ?? ""),
+      probabilityUp: Number(rawPred.probability_up ?? rawPred.probabilityUp ?? o.probability_up ?? o.probabilityUp ?? 0),
+    };
+
+    return {
+      type: "stock_analysis",
+      ticker: String(o.ticker ?? ""),
+      signal: String(o.signal ?? ""),
+      probabilityUp: Number(o.probability_up ?? o.probabilityUp ?? 0),
+      priceSummary: (o.price_summary ?? o.priceSummary ?? {}) as Record<string, number>,
+      priceDates: Array.isArray(o.price_dates ?? o.priceDates) ? (o.price_dates ?? o.priceDates) as string[] : [],
+      priceDfDict: Array.isArray(o.price_df_dict ?? o.priceDfDict) ? (o.price_df_dict ?? o.priceDfDict) as Array<Record<string, number>> : [],
+      sentimentDfDict: Array.isArray(o.sentiment_df_dict ?? o.sentimentDfDict) ? (o.sentiment_df_dict ?? o.sentimentDfDict) as Array<Record<string, number>> : [],
+      dailySentiment: (() => {
+        const raw = (o.daily_sentiment ?? o.dailySentiment ?? {}) as Record<string, Record<string, unknown>>;
+        const result: Record<string, { sentimentMean: number; newsCount: number }> = {};
+        for (const [date, vals] of Object.entries(raw)) {
+          result[date] = {
+            sentimentMean: Number(vals.sentiment_mean ?? vals.sentimentMean ?? 0),
+            newsCount: Number(vals.news_count ?? vals.newsCount ?? 0),
+          };
+        }
+        return result;
+      })(),
+      newsItems,
+      rawNews: Array.isArray(o.raw_news ?? o.rawNews) ? (o.raw_news ?? o.rawNews) as Array<Record<string, unknown>> : [],
+      metadata: (o.metadata ?? {}) as Record<string, unknown>,
+      ohlcvData,
+      predictionBar,
+    } satisfies StockAnalysisPayload;
+  }
+
   return null;
 }
 
@@ -190,9 +261,9 @@ function normalizeThinkingStep(raw: Record<string, unknown>): ThinkingStep {
     phase: (raw.phase ?? "intent_routing") as ThinkingStep["phase"],
     status: (raw.status ?? "active") as ThinkingStep["status"],
     content: String(raw.content ?? ""),
-    toolUsed: raw.tool_used ?? raw.toolUsed,
+    toolUsed: String(raw.tool_used ?? raw.toolUsed ?? ""),
     toolResultPreview:
-      raw.tool_result_preview ?? raw.toolResultPreview,
+      String(raw.tool_result_preview ?? raw.toolResultPreview ?? ""),
   };
 }
 
@@ -239,13 +310,23 @@ export function sendChatStream(
         if (readerDone) break;
 
         buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        // Keep the last incomplete line in the buffer
-        buffer = lines.pop() ?? "";
 
-        for (const line of lines) {
-          if (!line.startsWith("data: ")) continue;
-          const payload = line.slice("data: ".length).trim();
+        // Parse SSE events properly: each event ends with a blank line (\n\n).
+        // Accumulate lines until we hit a blank line, then dispatch the complete event.
+        while (buffer.includes("\n\n")) {
+          const eventEnd = buffer.indexOf("\n\n");
+          const eventBlock = buffer.slice(0, eventEnd);
+          buffer = buffer.slice(eventEnd + 2);
+
+          // Extract the data: line(s) — could be multi-line if JSON contains newlines
+          const dataLine = eventBlock
+            .split("\n")
+            .map((l) => l.trim())
+            .find((l) => l.startsWith("data: "));
+
+          if (!dataLine) continue;
+
+          const payload = dataLine.slice("data: ".length).trim();
           if (!payload) continue;
 
           try {
@@ -282,7 +363,7 @@ export function sendChatStream(
               onError(new Error(String(event.data)));
             }
           } catch (parseErr) {
-            logger.warn("Failed to parse SSE line: %s", payload.slice(0, 200));
+            logger.warn("Failed to parse SSE line: %s", payload.slice(0, 500), parseErr);
           }
         }
       }

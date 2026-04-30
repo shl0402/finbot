@@ -12,6 +12,7 @@ if tools_dir not in sys.path:
 # Tools imports
 from futunn_company_info_scrawler import scrape_futunn_stock_info
 from futunn_recent_news_link_scrawler import scrape_futunn_stock_news
+from futunn_recent_days_news_link_scrawler import scrape_futunn_recent_days_news
 from tradingview_stock_info_scrawler import scrape_tradingview_stock
 from tradingview_stock_analysis_scrawler import scrape_tradingview_stock_analysis
 from futunn_sector_change_scrawler import scrape_futunn_sectors
@@ -117,9 +118,18 @@ def get_mapped_entity(stock_name: str, platform_domain: str) -> str:
     """
     Looks up `stock_name` in the mapping file for `platform_domain`.
     First tries exact match, then falls back to fuzzy matching.
+    If `stock_name` already looks like a ticker code (e.g. "00027-HK" or "NASDAQ-AAPL"),
+    it is returned as-is without fuzzy matching.
 
     Returns the mapped symbol (e.g. '01024-HK') or the original name if no match found.
     """
+    # If it already looks like a mapped ticker code, return as-is to avoid
+    # incorrectly re-mapping it via fuzzy match against company names.
+    if re.match(r'^\d{4,5}-[A-Z]{2}$', stock_name):
+        return stock_name
+    if re.match(r'^[A-Z]+-[A-Z0-9.]+$', stock_name):
+        return stock_name
+
     platform_lower = platform_domain.split(".")[0].lower()
     if platform_lower == "tradingview":
         mapping_file = "tradingview_mapping.txt"
@@ -138,20 +148,25 @@ def get_mapped_entity(stock_name: str, platform_domain: str) -> str:
     print(f"No mapping found for '{stock_name}' — using raw name")
     return stock_name
 
-def run_scraper_manager(stock_name: str, mode: str, max_retries: int = 1) -> Any:
+def run_scraper_manager(stock_name: str, mode: str, max_retries: int = 1, **kwargs) -> Any:
     """
     Manager to try different URLs up to 10 times until success.
-    
+
     Available modes:
     - futunn_info
     - futunn_news
+    - futunn_news_days   <-- like futunn_news but with date-window + per-day cap
     - tradingview_info
     - tradingview_analysis
     - futunn_sectors
     - tradingview_sectors
     - yfinance_sectors
+
+    futunn_news_days accepts kwargs:
+      num_days (int): number of past calendar days to cover (default 20)
+      max_per_day (int): max news items per calendar day (default 2)
     """
-    
+
     # Sector modes don't need a stock_name or search, just return directly
     if mode == "futunn_sectors":
         return scrape_futunn_sectors()
@@ -174,6 +189,13 @@ def run_scraper_manager(stock_name: str, mode: str, max_retries: int = 1) -> Any
             "extractor": extract_futunn_stock_code,
             "scraper": scrape_futunn_stock_news
         },
+        "futunn_news_days": {
+            "suffix": "recent news (days-based)",
+            "domain": "futunn.com",
+            "extractor": extract_futunn_stock_code,
+            "scraper": scrape_futunn_recent_days_news,
+            "kwargs_keys": ["num_days", "max_per_day"],
+        },
         "tradingview_info": {
             "suffix": "stock price",
             "domain": "tradingview.com",
@@ -187,32 +209,44 @@ def run_scraper_manager(stock_name: str, mode: str, max_retries: int = 1) -> Any
             "scraper": scrape_tradingview_stock_analysis
         }
     }
-    
+
     if mode not in mode_config:
         print(f"Unknown mode: {mode}")
         return None
-        
+
     config = mode_config[mode]
     mapped_stock = get_mapped_entity(stock_name, config['domain'])
     print(f"Using mapped entity: '{mapped_stock}' (Original: '{stock_name}')")
-    
+
     extracted_params = config['extractor'](mapped_stock)
     if not extracted_params:
         print("Failed to extract standardized parameters from the mapped string. Aborting.")
         return None
-        
+
     try:
         if mode in ["futunn_info", "futunn_news"]:
             print(f"Running Futunn scraper with stock_code: {extracted_params}")
             return config['scraper'](stock_code=extracted_params, headless=True)
-            
+
+        elif mode == "futunn_news_days":
+            num_days = kwargs.get("num_days", 20)
+            max_per_day = kwargs.get("max_per_day", 2)
+            print(f"Running Futunn days-news scraper with stock_code={extracted_params}, "
+                  f"num_days={num_days}, max_per_day={max_per_day}")
+            return config['scraper'](
+                stock_code=extracted_params,
+                num_days=num_days,
+                max_per_day=max_per_day,
+                headless=True,
+            )
+
         elif mode in ["tradingview_info", "tradingview_analysis"]:
             print(f"Running TradingView scraper with params: {extracted_params}")
             return config['scraper'](exchange=extracted_params['exchange'], ticker=extracted_params['ticker'])
-            
+
     except Exception as e:
         print(f"Scraper crashed with error: {e}")
-        
+
     return None
 
 if __name__ == "__main__":
@@ -242,5 +276,32 @@ if __name__ == "__main__":
             success_count += 1
         total_tests += 1
         time.sleep(1)
+
+    # Test the days-based news scraper
+    print("\n" + "=" * 60)
+    print("Testing: futunn_recent_days_news_link_scrawler - num_days window)")
+    print("=" * 60)
+    test_days_modes = [
+        ("01810-HK", 20, 3),  # (stock_code, num_days, max_per_day)
+        ("TSLA-US",  20, 3),  # (stock_code, num_days, max_per_day)
+    ]
+    for stock_code, num_days, max_per_day in test_days_modes:
+        print(f"\n--- Scraping last {num_days} days (max {max_per_day}/day) for '{stock_code}' ---")
+        data = scrape_futunn_recent_days_news(
+            stock_code, num_days=num_days, max_per_day=max_per_day, headless=True
+        )
+        if data:
+            print(f"  SUCCESS: {len(data)} items returned")
+            dates = sorted(
+                set(item["parsed_date"].date() for item in data
+                   if "parsed_date" in item and item["parsed_date"] is not None)
+            )
+            if dates:
+                print(f"  Date range: {dates[-1]} → {dates[0]} ({len(dates)} unique days)")
+            success_count += 1
+        else:
+            print("  FAILED: no data returned")
+        total_tests += 1
+        time.sleep(2)
 
     print(f"\nFinal Success rate: {success_count}/{total_tests}")
