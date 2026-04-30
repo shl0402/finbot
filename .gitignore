@@ -12,3 +12,6 @@ backend/logs/
 
 # Editor/IDE
 .cursor/
+
+# Virtual environment
+venv/
