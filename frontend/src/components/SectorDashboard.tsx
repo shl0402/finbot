@@ -74,8 +74,16 @@ const PERF_FIELDS = [
 ];
 
 const PIE_COLORS = [
-  "#6366f1", "#22c55e", "#f59e0b", "#ef4444", "#8b5cf6",
-  "#06b6d4", "#ec4899", "#14b8a6", "#f97316", "#84cc16",
+  "#EF476F", // Vibrant Red/Pink
+  "#F78C6B", // Soft Orange
+  "#FFD166", // Bright Yellow
+  "#06D6A0", // Emerald Green
+  "#118AB2", // Deep Teal
+  "#073B4C", // Dark Navy
+  "#6A4C93", // Rich Purple
+  "#F15BB5", // Magenta
+  "#9D4EDD", // Bright Violet
+  "#48CAE4"  // Sky Blue
 ];
 
 function SectorTooltip({ sector, source }: { sector: SectorItem; source: SectorPayload["source"] }) {
@@ -235,15 +243,28 @@ function SectorBack({ sector, onBack }: { sector: SectorItem; onBack: () => void
               tickFormatter={(v) => `${v}%`}
             />
             <RechartsTooltip
+              // 1. Fix the bright hover highlight behind the bar
+              cursor={{ fill: "rgba(255, 255, 255, 0.06)" }} 
+              
               formatter={(value: number) => [`${value.toFixed(2)}%`, "Change"]}
               contentStyle={{
                 backgroundColor: "#1e1f20",
                 border: "1px solid rgba(255,255,255,0.1)",
                 borderRadius: "8px",
                 fontSize: "10px",
-                color: "#a1a1aa",
+                // 2. Brighten the default text color
+                color: "#e4e4e7", 
               }}
-              labelStyle={{ color: "#71717a", fontSize: "9px" }}
+              labelStyle={{ 
+                // 3. Brighten the label text (e.g., "6M")
+                color: "#a1a1aa", 
+                fontSize: "10px",
+                marginBottom: "2px"
+              }}
+              // 4. Force the item text (e.g., "Change : 28.61%") to be pale/white
+              itemStyle={{ 
+                color: "#f4f4f5" 
+              }}
             />
             <Bar
               dataKey="value"
@@ -535,24 +556,30 @@ export default function SectorDashboard({ payload, onClose }: SectorDashboardPro
                         ))}
                       </Pie>
                       <RechartsTooltip
-                        formatter={(value: number, name: string) => [
-                          formatCapLabel(value),
-                          name,
-                        ]}
-                        contentStyle={{
-                          backgroundColor: "#1e1f20",
-                          border: "1px solid rgba(255,255,255,0.1)",
-                          borderRadius: "8px",
-                          fontSize: "10px",
-                          color: "#a1a1aa",
-                        }}
-                        labelStyle={{ color: "#71717a", fontSize: "9px" }}
-                      />
+                      formatter={(value: number, name: string) => [
+                        formatCapLabel(value),
+                        name,
+                      ]}
+                      contentStyle={{
+                        backgroundColor: "#1e1f20",
+                        border: "1px solid rgba(255,255,255,0.1)",
+                        borderRadius: "8px",
+                        fontSize: "10px",
+                        color: "#f4f4f5", // <-- Updated to a pale white
+                      }}
+                      itemStyle={{ 
+                        color: "#f4f4f5"  // <-- ADDED: Forces the sector name and value to be pale white
+                      }}
+                      labelStyle={{ 
+                        color: "#a1a1aa", // <-- Lightened slightly to a visible gray
+                        fontSize: "9px" 
+                      }}
+                    />
                     </PieChart>
                   </ResponsiveContainer>
                 </div>
                 <div className="flex flex-col gap-1 min-w-0 flex-1">
-                  {pieData.slice(0, 6).map((s, i) => {
+                  {pieData.map((s, i) => { 
                     const pct = totalCap > 0 ? (s._capVal / totalCap * 100) : 0;
                     return (
                       <div key={i} className="flex items-center gap-1.5 min-w-0">
