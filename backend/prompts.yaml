@@ -20,7 +20,7 @@ routing:
 
     Respond ONLY with valid JSON (no markdown, no explanation). The JSON must have these exact keys:
     {
-      "mode": "company_info" | "sector_analysis" | "none",
+      "mode": "company_info" | "sector_analysis" | "stock_analysis" | "none",
       "stock_name": "the stock/company name mentioned, or empty string",
       "sector_name": "the sector name mentioned, or empty string",
       "reasoning": "one sentence explaining why you chose this mode"
@@ -29,12 +29,17 @@ routing:
     Rules:
     - "company_info": user asks about a specific company's profile, financials, stock price, or description. Look for a stock name or company name.
     - "sector_analysis": user asks about sectors, industries, market heatmaps, sector performance, or which sector to invest in.
+    - "stock_analysis": user asks whether a stock is worth buying/selling, wants a prediction, asks about sentiment, wants to "analyze" a stock, asks "should I invest in X", or asks about a stock's outlook. This triggers the full ML pipeline with news, sentiment, and model prediction.
     - "none": general conversation, greetings, or questions that don't need tools.
 
     Examples:
     - "Tell me about Xiaomi" -> {"mode":"company_info","stock_name":"xiaomi","sector_name":"","reasoning":"..."}
     - "Which sector is best to invest in Hong Kong right now?" -> {"mode":"sector_analysis","stock_name":"","sector_name":"","reasoning":"..."}
     - "What is the AI sector performance today?" -> {"mode":"sector_analysis","stock_name":"","sector_name":"AI","reasoning":"..."}
+    - "Should I buy Xiaomi?" -> {"mode":"stock_analysis","stock_name":"xiaomi","sector_name":"","reasoning":"..."}
+    - "Is BYD a good buy right now?" -> {"mode":"stock_analysis","stock_name":"byd","sector_name":"","reasoning":"..."}
+    - "Analyze Tencent for me" -> {"mode":"stock_analysis","stock_name":"tencent","sector_name":"","reasoning":"..."}
+    - "What do you think about Alibaba stock?" -> {"mode":"stock_analysis","stock_name":"alibaba","sector_name":"","reasoning":"..."}
     - "How are you doing?" -> {"mode":"none","stock_name":"","sector_name":"","reasoning":"..."}
 
     User query:
@@ -81,6 +86,28 @@ response_templates:
     - If the user asked about a specific sector (e.g. "how is tech doing?"), focus on that sector and its relevant peers.
     - If the user asked a broad question (e.g. "which sectors are hot today?"), give top/bottom 2-3 sectors with brief reasons.
     - Reference the dashboard for the full heatmap — do not list every sector.
+
+  stock_analysis: |
+    You are answering a user question about a stock's investment outlook. The dashboard beside this response shows the full analysis.
+
+    User's question: {user_message}
+
+    Retrieved analysis data:
+    {tool_data}
+
+    Instructions:
+    - Extract the signal and probability_up value from the tool_data JSON:
+        * signal: either "BUY" or "SELL" (from model_prediction.signal)
+        * probability_up: a float between 0 and 1 (from model_prediction.probability_up)
+        * price_summary: recent price data (from price_summary)
+    - ALWAYS report the model's signal and probability clearly, e.g. "The model predicts a BUY signal with 54.65% probability of upside."
+    - If the user asked about SHORTING:
+        * A BUY signal (upside) means the stock is expected to go UP — shorting is risky and against the trend.
+        * A SELL signal (downside) means the stock is expected to go DOWN — shorting aligns with the trend.
+    - Use the model's prediction as the authoritative answer — do NOT derive your own BUY/SELL from the raw news or sentiment scores.
+    - Briefly explain the key factors the model used (e.g., recent sentiment trend, notable headlines, price momentum).
+    - Reference the dashboard for full news details and technical indicators.
+    - Keep the response concise — the dashboard handles the depth.
 
   none: |
     The conversation history is below. Answer the user's question naturally as FinBot.

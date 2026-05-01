@@ -27,6 +27,13 @@ class ThinkingStep(BaseModel):
         "tool_selection",
         "tool_execution",
         "response_generation",
+        "news_scraping",
+        "llm_labeling",
+        "sentiment",
+        "ontology",
+        "daily_agg",
+        "price_fetch",
+        "model",
     ]
     status: Literal["active", "success", "failed", "skipped"] = "active"
     content: str
@@ -118,6 +125,48 @@ class SectorPayload(BaseModel):
     sectors: list[SectorItem]
 
 
+# ── Stock Analysis ─────────────────────────────────────────────────────────────
+
+class NewsItemPayload(BaseModel):
+    title: str
+    time: str
+    source: str
+    link: str
+    short_description: str
+    parsed_date: str
+    relation_id: str
+    fixed_sentiment_applicable: bool
+    related_company: list[str] = []
+    chain_of_thought: str
+    confidence_score: float
+    sentiment_label: str
+    raw_sentiment_score: float
+    positive_prob: float
+    negative_prob: float
+    neutral_prob: float
+    ontology_sentiment: float
+
+
+class StockAnalysisPayload(BaseModel):
+    """Dashboard for stock analysis — news, sentiment, price features, and ML prediction."""
+    type: Literal["stock_analysis"]
+    ticker: str
+    signal: str  # "BUY" or "SELL"
+    probability_up: float
+    price_summary: dict[str, float]
+    price_dates: list[str]
+    price_df_dict: list[dict]
+    sentiment_df_dict: list[dict]
+    daily_sentiment: dict[str, dict]  # date -> {sentiment_mean, news_count}
+    news_items: list[NewsItemPayload]
+    raw_news: list[dict]
+    metadata: dict
+    # Candlestick chart data (OHLCV per day) for the price history section
+    ohlcv_data: list[dict] = Field(default_factory=list)
+    # Prediction info for the "next day" arrow in the chart
+    prediction_bar: dict = Field(default_factory=dict)
+
+
 # ── API Request / Response ────────────────────────────────────────────────────
 
 class ChatRequest(BaseModel):
@@ -128,7 +177,7 @@ class ChatRequest(BaseModel):
 class ChatResponse(BaseModel):
     reply_text: str
     dashboard_payload: (
-        MarketDiscoveryPayload | ChartPayload | CodePayload | CompanyInfoPayload | SectorPayload | None
+        MarketDiscoveryPayload | ChartPayload | CodePayload | CompanyInfoPayload | SectorPayload | StockAnalysisPayload | None
     )
 
 
@@ -136,10 +185,10 @@ class ChatResponseV2(BaseModel):
     """Full pipeline response with thinking steps."""
     reply_text: str
     dashboard_payload: (
-        MarketDiscoveryPayload | ChartPayload | CodePayload | CompanyInfoPayload | SectorPayload | None
+        MarketDiscoveryPayload | ChartPayload | CodePayload | CompanyInfoPayload | SectorPayload | StockAnalysisPayload | None
     )
     thinking_steps: list[ThinkingStep] = Field(default_factory=list)
-    mode_used: Literal["company_info", "sector_analysis", "none"] = "none"
+    mode_used: Literal["company_info", "sector_analysis", "stock_analysis", "none"] = "none"
 
 
 # ── Frontend Log Payload ─────────────────────────────────────────────────────

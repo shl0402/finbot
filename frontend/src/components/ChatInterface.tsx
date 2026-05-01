@@ -7,6 +7,7 @@ import PromptInput from "./PromptInput";
 import ThinkingProcess from "./ThinkingProcess";
 import CompanyDashboard from "./CompanyDashboard";
 import SectorDashboard from "./SectorDashboard";
+import StockAnalysisDashboard from "./StockAnalysisDashboard";
 import type {
   ChatMessage,
   DashboardPayload,
@@ -16,6 +17,7 @@ import type {
   ThinkingStep,
   CompanyInfoPayload,
   SectorPayload,
+  StockAnalysisPayload,
 } from "@/types/chat";
 import { sendChatStream } from "@/lib/api";
 import { logger } from "@/lib/logger";
@@ -43,13 +45,14 @@ function getUserSiblingIdsForParent(messages: ChatMessage[], parentId: string | 
     return messages
       .filter((m) => m.role === "user" && m.parentId === null)
       .sort((a, b) => a.timestamp.getTime() - b.timestamp.getTime())
-      .map((m) => m.id);
+      .filter((m): m is ChatMessage => Boolean(m) && m.role === "user")
+    .map((m) => m.id);
   }
   const parent = messages.find((m) => m.id === parentId);
   if (!parent) return [];
   return parent.children
     .map((cid) => messages.find((m) => m.id === cid))
-    .filter((m): m is ChatMessage => Boolean(m) && m.role === "user")
+    .filter((m): m is ChatMessage => m !== undefined && m.role === "user")
     .map((m) => m.id);
 }
 
@@ -317,7 +320,13 @@ export default function ChatInterface() {
 
   // Resizable panel dimensions
   const [thinkingPanelHeight, setThinkingPanelHeight] = useState(180);
-  const [dashboardWidth, setDashboardWidth] = useState(360);
+  const [dashboardWidth, setDashboardWidth] = useState(560);
+
+  // Lock body scroll when dashboard is open so wheel events go to the chat column
+  useEffect(() => {
+    document.body.style.overflow = activeDashboard ? "hidden" : "";
+    return () => { document.body.style.overflow = ""; };
+  }, [activeDashboard]);
 
   // ── Horizontal resize for dashboard panel ──────────────────────────────────
   function startHorizontalDrag(e: React.MouseEvent) {
@@ -337,7 +346,10 @@ export default function ChatInterface() {
   }
 
   const bottomRef = useRef<HTMLDivElement>(null);
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
   const messagesRef = useRef<ChatMessage[]>([]);
+  const userScrolledUpRef = useRef(false);
+  const didAutoScrollRef = useRef(false);
 
   useEffect(() => {
     messagesRef.current = messages;
@@ -346,14 +358,17 @@ export default function ChatInterface() {
   const activePath = getActivePath(messages, currentLeafId);
 
   const scrollToBottom = useCallback(() => {
-    setTimeout(() => {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth" });
-    }, 50);
+    if (userScrolledUpRef.current) return;
+    bottomRef.current?.scrollIntoView();
   }, []);
 
   useEffect(() => {
-    scrollToBottom();
-  }, [messages, activeDashboard, scrollToBottom]);
+    if (isLoading && !didAutoScrollRef.current) {
+      didAutoScrollRef.current = true;
+      scrollToBottom();
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isLoading, scrollToBottom]);
 
   // ── Send with SSE streaming ──────────────────────────────────────────────────
 
@@ -403,7 +418,6 @@ export default function ChatInterface() {
     setShowThinkingPanel(true);
     setActiveDashboard(null);
     setIsLoading(true);
-    scrollToBottom();
 
     // Placeholder AI message (will be filled in when SSE completes)
     const aiMsgId = generateId();
@@ -557,7 +571,6 @@ export default function ChatInterface() {
     setThinkingSteps([]);
     setShowThinkingPanel(true);
     setIsLoading(true);
-    scrollToBottom();
 
     const prefixPath = branchParentId != null
       ? getActivePath(messagesRef.current, branchParentId)
@@ -625,18 +638,42 @@ export default function ChatInterface() {
 
   function handleDelete(id: string) {
     setMessages((prev) => {
-      const deleted = prev.find((m) => m.id === id);
-      if (!deleted) return prev;
-      const withoutDeleted = prev.filter((m) => m.id !== id);
-      if (currentLeafId === id) setCurrentLeafId(deleted.parentId);
-      if (deleted.parentId) {
-        const parentIdx = withoutDeleted.findIndex((m) => m.id === deleted.parentId);
-        if (parentIdx !== -1) {
-          withoutDeleted[parentIdx] = {
-            ...withoutDeleted[parentIdx],
-            children: withoutDeleted[parentIdx].children.filter((cid) => cid !== id),
-          };
-        }
+      const msg = prev.find((m) => m.id === id);
+      if (!msg) return prev;
+
+      const deletedParentId = msg.parentId;
+      const directChildren = msg.children;
+
+      const toDelete = new Set<string>([id, ...directChildren]);
+
+      const withoutDeleted = prev
+        .filter((m) => !toDelete.has(m.id))
+        .map((m) => {
+          if (m.id === deletedParentId) {
+            const orphaned = directChildren
+              .flatMap((childId) => {
+                const child = prev.find((msg) => msg.id === childId);
+                return child ? child.children.filter((gc) => !toDelete.has(gc)) : [];
+              })
+              .filter((gcId) => !toDelete.has(gcId));
+            return { ...m, children: [...m.children.filter((c) => !toDelete.has(c)), ...orphaned] };
+          }
+          if (directChildren.includes(m.id)) {
+            return m;
+          }
+          if (toDelete.has(m.parentId ?? "")) {
+            return { ...m, parentId: deletedParentId };
+          }
+          const filteredChildren = m.children.filter((c) => !toDelete.has(c));
+          if (filteredChildren.length !== m.children.length) {
+            return { ...m, children: filteredChildren };
+          }
+          return m;
+        });
+
+      if (currentLeafId && toDelete.has(currentLeafId)) setCurrentLeafId(id);
+      if (!withoutDeleted.find((m) => m.id === currentLeafId)) {
+        setCurrentLeafId(withoutDeleted[withoutDeleted.length - 1]?.id ?? null);
       }
       return withoutDeleted;
     });
@@ -663,6 +700,14 @@ export default function ChatInterface() {
         />
       );
     }
+    if (payload.type === "stock_analysis") {
+      return (
+        <StockAnalysisDashboard
+          payload={payload as StockAnalysisPayload}
+          onClose={() => setActiveDashboard(null)}
+        />
+      );
+    }
     // Legacy types
     return <LegacyDashboardPanel payload={payload} onClose={() => setActiveDashboard(null)} />;
   }
@@ -670,7 +715,7 @@ export default function ChatInterface() {
   return (
     <div className="flex h-screen w-full overflow-hidden bg-[#131314] text-zinc-100">
       {/* Main chat */}
-      <div className="flex flex-1 flex-col min-w-0">
+      <div className={activeDashboard ? "flex-[1_1_50%] flex-col min-w-0" : "flex flex-1 flex-col min-w-0"}>
         {/* Header */}
         <header className="flex-shrink-0 flex items-center gap-3 border-b border-white/[0.08] bg-[#131314]/95 px-6 py-3.5 backdrop-blur-sm">
           <div className="flex h-8 w-8 items-center justify-center rounded-full bg-gradient-to-br from-blue-400 to-purple-500">
@@ -696,7 +741,16 @@ export default function ChatInterface() {
         )}
 
         {/* Messages */}
-        <div className="flex-1 overflow-y-auto pb-36">
+        <div ref={scrollContainerRef} style={{ height: "calc(100vh - 57px - 72px)" }} className="overflow-y-auto pb-56" onScroll={(e) => {
+          const el = e.currentTarget;
+          const distFromBottom = el.scrollHeight - el.scrollTop - el.clientHeight;
+          if (distFromBottom < 200) {
+            userScrolledUpRef.current = false;
+            didAutoScrollRef.current = false;
+          } else {
+            userScrolledUpRef.current = true;
+          }
+        }}>
           {/* Empty state */}
           {activePath.length === 0 && !isLoading && (
             <div className="flex h-full flex-col items-center justify-center gap-4">
@@ -774,16 +828,16 @@ export default function ChatInterface() {
 
       {/* Dashboard panel */}
       {activeDashboard && (
-        <div className="flex flex-shrink-0">
+        <div className="relative flex flex-shrink-0 pb-20" style={{ width: dashboardWidth }}>
           {/* Horizontal resize handle */}
           <div
-            className="group relative z-10 w-2 cursor-col-resize flex-shrink-0 flex items-center justify-center"
+            className="group absolute -left-2 top-0 z-10 flex h-full w-4 cursor-col-resize items-center justify-center"
             onMouseDown={startHorizontalDrag}
           >
             <div className="h-8 w-0.5 rounded-full bg-white/[0.06] transition-colors group-hover:bg-blue-400/40" />
           </div>
 
-          <div style={{ width: dashboardWidth }}>
+          <div className="flex-1 overflow-y-auto border-l border-white/[0.08]">
             {renderDashboardPanel(activeDashboard)}
           </div>
         </div>

@@ -12,6 +12,8 @@ from models import (
     MarketDiscoveryPayload,
     CodePayload,
     RRScore,
+    StockAnalysisPayload,
+    NewsItemPayload,
 )
 from typing import Any, Literal
 
@@ -270,6 +272,74 @@ def build_sector_payload(
         source=clean_source,
         interactive=interactive,
         sectors=items,
+    )
+
+
+# ── Stock Analysis Builder ─────────────────────────────────────────────────────
+
+def build_stock_analysis_payload(raw: dict[str, Any]) -> StockAnalysisPayload | None:
+    """
+    Build a StockAnalysisPayload from stock_analysis.run_prediction() output.
+
+    Expected data shape (from stock_analysis.py run_prediction()):
+    {
+        "ticker": str,
+        "model_prediction": {"probability_up": float, "signal": str},
+        "price_summary": dict[str, float],
+        "price_dates": list[str],
+        "price_df_dict": list[dict],
+        "sentiment_df_dict": list[dict],
+        "daily_sentiment": dict[str, dict],
+        "news_items": list[dict],
+        "raw_news": list[dict],
+        "metadata": dict,
+    }
+    """
+    if not raw:
+        return None
+
+    mp = raw.get("model_prediction", {})
+    signal = str(mp.get("signal", "SELL"))
+    probability_up = float(mp.get("probability_up", 0.0))
+
+    news_items = [
+        NewsItemPayload(
+            title=str(n.get("title", "")),
+            time=str(n.get("time", "")),
+            source=str(n.get("source", "")),
+            link=str(n.get("link", "")),
+            short_description=str(n.get("short_description", "")),
+            parsed_date=str(n.get("parsed_date", "")),
+            relation_id=str(n.get("relation_id", "0.0")),
+            fixed_sentiment_applicable=bool(n.get("fixed_sentiment_applicable", False)),
+            related_company=list(n.get("related_company", [])),
+            chain_of_thought=str(n.get("chain_of_thought", "")),
+            confidence_score=float(n.get("confidence_score", 0.0)),
+            sentiment_label=str(n.get("sentiment_label", "neutral")),
+            raw_sentiment_score=float(n.get("raw_sentiment_score", 0.0)),
+            positive_prob=float(n.get("positive_prob", 0.0)),
+            negative_prob=float(n.get("negative_prob", 0.0)),
+            neutral_prob=float(n.get("neutral_prob", 0.0)),
+            ontology_sentiment=float(n.get("ontology_sentiment", 0.0)),
+        )
+        for n in raw.get("news_items", [])
+    ]
+
+    return StockAnalysisPayload(
+        type="stock_analysis",
+        ticker=str(raw.get("ticker", "")),
+        signal=signal,
+        probability_up=probability_up,
+        price_summary=raw.get("price_summary", {}),
+        price_dates=list(raw.get("price_dates", [])),
+        price_df_dict=list(raw.get("price_df_dict", [])),
+        sentiment_df_dict=list(raw.get("sentiment_df_dict", [])),
+        daily_sentiment=raw.get("daily_sentiment", {}),
+        news_items=news_items,
+        raw_news=list(raw.get("raw_news", [])),
+        metadata=raw.get("metadata", {}),
+        ohlcv_data=list(raw.get("ohlcv_data", [])),
+        prediction_bar=raw.get("prediction_bar", {}),
     )
 
 

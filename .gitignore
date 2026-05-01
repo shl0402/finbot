@@ -2,6 +2,7 @@
 __pycache__/
 *.py[cod]
 .env
+backend/.env
 
 # Logs
 *.log
@@ -12,3 +13,6 @@ backend/logs/
 
 # Editor/IDE
 .cursor/
+
+# Virtual environment
+backend/venv/

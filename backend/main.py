@@ -46,6 +46,27 @@ def sse_event(data: dict, event: str = "message") -> bytes:
     return f"event: {event}\ndata: {json.dumps(data)}\n\n".encode("utf-8")
 
 
+def _trim_dashboard_payload(d: dict) -> dict:
+    """
+    Remove or shrink oversized fields in dashboard payloads to prevent
+    SSE stream truncation. Only the fields actually used by the frontend
+    StockAnalysisDashboard are kept.
+    """
+    if d.get("type") == "stock_analysis":
+        # Remove fields the frontend doesn't render
+        d.pop("raw_news", None)
+        d.pop("sentiment_df_dict", None)
+        # Trim price table to last 30 rows to reduce JSON size
+        df = d.get("price_df_dict", [])
+        if isinstance(df, list) and len(df) > 30:
+            d["price_df_dict"] = df[-30:]
+        # Trim news items to last 40
+        ni = d.get("news_items", [])
+        if isinstance(ni, list) and len(ni) > 40:
+            d["news_items"] = ni[-40:]
+    return d
+
+
 async def event_stream(coro):
     """
     Run a coroutine that yields (step_or_response) objects
@@ -72,7 +93,7 @@ async def api_chat(req: ChatRequest) -> ChatResponse:
     """
     logger.info("POST /api/chat — mode=%s history_len=%d", req.mode, len(req.history))
     try:
-        return chat_legacy(req)
+        return await chat_legacy(req)
     except Exception as exc:
         logger.exception("chat endpoint error: %s", exc)
         return ChatResponse(
@@ -116,41 +137,26 @@ async def api_chat_stream(req: Request):
 
 async def _stream_pipeline(req: ChatRequest):
     """
-    Async generator that runs the chat() generator and yields SSE events for each step
-    in real-time as it is produced, then streams the final response.
+    Async generator that runs the async chat() generator and yields SSE events
+    for each step in real-time, then streams the final response.
     """
     from chat_service import chat
     from models import ThinkingStep, ChatResponseV2
 
-    sentinel = object()
-
-    def run_sync():
-        return chat(req)
-
-    def next_item(gen):
-        """next() that swallows StopIteration and returns sentinel instead."""
-        try:
-            return next(gen)
-        except StopIteration:
-            return sentinel
-
-    loop = asyncio.get_running_loop()
-    sync_gen = await loop.run_in_executor(None, run_sync)
-
     steps: list[ThinkingStep] = []
     final_result: ChatResponseV2 | None = None
 
-    while True:
-        item = await loop.run_in_executor(None, next_item, sync_gen)
-        if item is sentinel:
-            break
-
+    async for item in chat(req):
         if isinstance(item, ChatResponseV2):
             final_result = item
         else:
             step = item  # ThinkingStep
             steps.append(step)
-            yield sse_event({"type": "step", "data": step.model_dump()})
+            try:
+                step_data = step.model_dump()
+                yield sse_event({"type": "step", "data": step_data})
+            except Exception as exc:
+                logger.error("Failed to serialize ThinkingStep: %s", exc)
 
     if final_result is None:
         final_result = ChatResponseV2(reply_text="", thinking_steps=[], mode_used="none")
@@ -158,19 +164,32 @@ async def _stream_pipeline(req: ChatRequest):
     # Patch final result with streamed steps for completeness
     final_result.thinking_steps = steps
 
-    yield sse_event({
-        "type": "response",
-        "data": {
-            "reply_text": final_result.reply_text,
-            "dashboard_payload": (
-                final_result.dashboard_payload.model_dump()
-                if final_result.dashboard_payload is not None
-                else None
-            ),
-            "thinking_steps": [s.model_dump() for s in steps],
-            "mode_used": final_result.mode_used,
-        }
-    })
+    try:
+        dashboard_dict = None
+        if final_result.dashboard_payload is not None:
+            dashboard_dict = final_result.dashboard_payload.model_dump()
+            dashboard_dict = _trim_dashboard_payload(dashboard_dict)
+
+        yield sse_event({
+            "type": "response",
+            "data": {
+                "reply_text": final_result.reply_text,
+                "dashboard_payload": dashboard_dict,
+                "thinking_steps": [s.model_dump() for s in steps],
+                "mode_used": final_result.mode_used,
+            }
+        })
+    except Exception as exc:
+        logger.error("Failed to serialize ChatResponseV2: %s", exc)
+        yield sse_event({
+            "type": "response",
+            "data": {
+                "reply_text": final_result.reply_text,
+                "dashboard_payload": None,
+                "thinking_steps": [],
+                "mode_used": final_result.mode_used,
+            }
+        })
 
 
 @app.post("/api/log")

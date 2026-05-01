@@ -9,8 +9,6 @@ export const mockMessages: ChatMessage[] = [
     timestamp: new Date("2026-03-31T09:00:00"),
     parentId: null,
     children: ["msg-2"],
-    editHistory: ["What are the top stock picks right now?"],
-    currentEditIndex: 0,
   },
   {
     id: "msg-2",
@@ -28,8 +26,6 @@ export const mockMessages: ChatMessage[] = [
     timestamp: new Date("2026-03-31T09:02:00"),
     parentId: "msg-2",
     children: ["msg-4", "msg-5"],
-    editHistory: ["Tell me about NVDA", "Tell me more about NVDA"],
-    currentEditIndex: 1,
   },
   {
     id: "msg-4",
@@ -56,8 +52,6 @@ export const mockMessages: ChatMessage[] = [
     timestamp: new Date("2026-03-31T09:05:00"),
     parentId: "msg-4",
     children: ["msg-7"],
-    editHistory: ["Can you show me the chart for TSLA?"],
-    currentEditIndex: 0,
   },
   {
     id: "msg-7",

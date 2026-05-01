@@ -17,6 +17,13 @@ const PHASE_LABELS: Record<Phase, string> = {
   tool_selection: "Tool Selection",
   tool_execution: "Tool Execution",
   response_generation: "Response Generation",
+  news_scraping: "News Scraping",
+  llm_labeling: "LLM Labeling",
+  sentiment: "Sentiment Scoring",
+  ontology: "Ontology Adjustment",
+  daily_agg: "Daily Aggregation",
+  price_fetch: "Price Fetching",
+  model: "Ensemble Model",
 };
 
 const PHASE_COLORS: Record<Phase, string> = {
@@ -24,6 +31,13 @@ const PHASE_COLORS: Record<Phase, string> = {
   tool_selection: "bg-purple-500/20 text-purple-400 border-purple-500/30",
   tool_execution: "bg-amber-500/20 text-amber-400 border-amber-500/30",
   response_generation: "bg-green-500/20 text-green-400 border-green-500/30",
+  news_scraping: "bg-cyan-500/20 text-cyan-400 border-cyan-500/30",
+  llm_labeling: "bg-violet-500/20 text-violet-400 border-violet-500/30",
+  sentiment: "bg-pink-500/20 text-pink-400 border-pink-500/30",
+  ontology: "bg-indigo-500/20 text-indigo-400 border-indigo-500/30",
+  daily_agg: "bg-orange-500/20 text-orange-400 border-orange-500/30",
+  price_fetch: "bg-emerald-500/20 text-emerald-400 border-emerald-500/30",
+  model: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
 };
 
 const PHASE_ICONS: Record<Phase, React.ReactNode> = {
@@ -48,6 +62,52 @@ const PHASE_ICONS: Record<Phase, React.ReactNode> = {
   response_generation: (
     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
+    </svg>
+  ),
+  news_scraping: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2" />
+      <path d="M18 14h-8M15 18h-5M10 6h8v4h-8z" />
+    </svg>
+  ),
+  llm_labeling: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <path d="M12 2a2 2 0 0 1 2 2c0 .74-.4 1.39-1 1.73V7h1a7 7 0 0 1 7 7h1a1 1 0 0 1 1 1v3a1 1 0 0 1-1 1h-1v1a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-1H2a1 1 0 0 1-1-1v-3a1 1 0 0 1 1-1h1a7 7 0 0 1 7-7h1V5.73c-.6-.34-1-.99-1-1.73a2 2 0 0 1 2-2z" />
+    </svg>
+  ),
+  sentiment: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="10" />
+      <path d="M8 13s1.5 2 4 2 4-2 4-2M9 9a3 3 0 0 0 5 1.7" />
+    </svg>
+  ),
+  ontology: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <circle cx="12" cy="12" r="3" />
+      <path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83" />
+    </svg>
+  ),
+  daily_agg: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="3" y="4" width="18" height="18" rx="2" ry="2" />
+      <line x1="16" y1="2" x2="16" y2="6" />
+      <line x1="8" y1="2" x2="8" y2="6" />
+      <line x1="3" y1="10" x2="21" y2="10" />
+      <path d="M8 14h.01M12 14h.01M16 14h.01M8 18h.01M12 18h.01" />
+    </svg>
+  ),
+  price_fetch: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="22 12 18 12 15 21 9 3 6 12 2 12" />
+    </svg>
+  ),
+  model: (
+    <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="4" y="4" width="6" height="6" rx="1" />
+      <rect x="14" y="4" width="6" height="6" rx="1" />
+      <rect x="4" y="14" width="6" height="6" rx="1" />
+      <rect x="14" y="14" width="6" height="6" rx="1" />
+      <path d="M10 7h4M7 10v4M17 10v4M10 17h4" />
     </svg>
   ),
 };
@@ -100,6 +160,18 @@ function ToolBadge({ tool }: { tool: string }) {
     ? "bg-futunn/20 text-futunn border-futunn/30"
     : tool.includes("yfinance")
     ? "bg-yfinance/20 text-yfinance border-yfinance/30"
+    : tool.includes("llm_labeling") || tool.includes("gemini")
+    ? "bg-violet-500/20 text-violet-400 border-violet-500/30"
+    : tool.includes("sentiment")
+    ? "bg-pink-500/20 text-pink-400 border-pink-500/30"
+    : tool.includes("ontology")
+    ? "bg-indigo-500/20 text-indigo-400 border-indigo-500/30"
+    : tool.includes("daily_agg") || tool.includes("aggregation")
+    ? "bg-orange-500/20 text-orange-400 border-orange-500/30"
+    : tool.includes("price_fetch")
+    ? "bg-emerald-500/20 text-emerald-400 border-emerald-500/30"
+    : tool.includes("model")
+    ? "bg-yellow-500/20 text-yellow-400 border-yellow-500/30"
     : "bg-white/10 text-zinc-400 border-white/10";
 
   return (
