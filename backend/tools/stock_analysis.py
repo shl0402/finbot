@@ -122,253 +122,6 @@ Output strictly as JSON:
   "confidence_score": 0.95
 }"""
 
-# ── Entity Map — same logic as sam_ontology.ipynb Cell 1 ────────────────────
-# Built from: (1) Excel column-sector competitors + (2) manual supplier/index/institution relations
-# competitor = invert sentiment | supplier/match/index/institution = pass through unchanged
-_ENTITY_MAP: dict[str, dict[str, str]] = {}
-
-# Helper to populate from keywords dict
-def _add_competitors(target: str, competitor_keywords: list[str]):
-    if target not in _ENTITY_MAP:
-        _ENTITY_MAP[target] = {}
-    for kw in competitor_keywords:
-        kw_lower = kw.lower()
-        if kw_lower not in _ENTITY_MAP[target]:
-            _ENTITY_MAP[target][kw_lower] = "competitor"
-
-def _add_relation(target: str, entity_keyword: str, rel_type: str):
-    if target not in _ENTITY_MAP:
-        _ENTITY_MAP[target] = {}
-    key = entity_keyword.lower()
-    if key not in _ENTITY_MAP[target]:
-        _ENTITY_MAP[target][key] = rel_type
-
-# ── Full entity map — matching sam_ontology.ipynb Cell 1 ─────────────────────
-# Technology / Internet
-_ENTITIES = {
-    "700":  ["腾讯", "Tencent", "微信", "WeChat", "王者荣耀", "riot", "RIOT", "网易", "NetEase", "百度", "Baidu", "阿里巴巴", "Alibaba", "字节跳动", "ByteDance", "京东", "JD.com", "美团", "Meituan", "拼多多", "Pinduoduo"],
-    "1810": ["小米", "Xiaomi", "红米", "Redmi", "POCO", "荣耀", "HONOR", "OPPO", "vivo", "Realme", "OnePlus", "三星", "Samsung", "苹果", "Apple", "iPhone", "华为", "Huawei", "中兴", "ZTE", "联想", "Lenovo", "戴尔", "Dell", "惠普", "HP"],
-    "1211": ["比亚迪", "BYD", "Tesla", "特斯拉", "蔚来", "NIO", "小鹏", "XPeng", "理想汽车", "Li Auto", "吉利", "Geely", "长城汽车", "Great Wall", "广汽", "GAC", "长安汽车", "上汽", "SAIC", "东风", "Dongfeng"],
-    "9988": ["阿里巴巴", "Alibaba", "淘宝", "Taobao", "天猫", "Tmall", "京东", "JD.com", "拼多多", "Pinduoduo", "PDD", "字节跳动", "ByteDance", "美团", "Meituan", "腾讯", "Tencent", "快手", "Kuaishou", "百度", "Baidu"],
-    "9618": ["京东", "JD.com", "阿里巴巴", "Alibaba", "拼多多", "Pinduoduo", "PDD", "美团", "Meituan", "当当", "Dangdang", "唯品会", "Vipshop", "苏宁", "Suning"],
-    "3690": ["美团", "Meituan", "饿了么", "Ele.me", "阿里口碑", "Alibaba", "大众点评", "Dianping", "抖音", "TikTok", "快手", "Kuaishou", "小红书", "RED", "携程", "Trip.com"],
-    "1024": ["快手", "Kuaishou", "抖音", "TikTok", "微信视频号", "WeChat Channels", "B站", "Bilibili", "哔哩哔哩", "BILIBILI", "小红书", "RED", "AcFun", "YouTube"],
-    "9626": ["B站", "Bilibili", "哔哩哔哩", "BILIBILI", "抖音", "TikTok", "快手", "Kuaishou", "小红书", "RED", "AcFun", "YouTube", "西瓜视频", "腾讯视频", "WeTV"],
-    "9888": ["百度", "Baidu", "谷歌", "Google", "必应", "Bing", "搜狗", "Sogou", "360搜索", "360 Search", "字节跳动", "ByteDance", "阿里巴巴", "Alibaba"],
-    "20":   ["商汤", "SenseTime", "旷视", "Megvii", "云从", "CloudWalk", "依图", "Yitu", "海康威视", "Hikvision", "大华", "Dahua"],
-    "763":  ["中兴通讯", "ZTE", "华为", "Huawei", "爱立信", "Ericsson", "诺基亚", "Nokia", "三星通信", "Samsung Networks", "烽火通信", "FiberHome", "爱立信"],
-    "992":  ["联想", "Lenovo", "戴尔", "Dell", "惠普", "HP", "华硕", "ASUS", "宏碁", "Acer", "苹果", "Apple", "华为", "Huawei", "小米", "Xiaomi"],
-    "285":  ["比亚迪电子", "BYD Electronic", "富士康", "Foxconn", "伟创力", "Flex", "捷普", "Jabil", "冠捷", "TPV", "三星电机", "Samsung Electro"],
-    "2382": ["舜宇光学", "Sunny Optical", "丘钛科技", "Q-Tech", "AAC", "瑞声科技", "大立光", "Largan", "玉晶光", "Genius", "欧菲光", "Ofilm", "信利国际", "Truly"],
-    "2018": ["瑞声科技", "AAC Tech", "歌尔股份", "GoerTech", "奋达科技", "Fenda", "国光电器", "GGEC"],
-    "1415": ["高伟电子", "Cowell", "丘钛科技", "Q-Tech", "欧菲光", "Ofilm", "信利国际", "Truly"],
-    "1347": ["华虹半导体", "Hua Hong", "中芯国际", "SMIC", "台积电", "TSMC", "联电", "UMC", "GlobalFoundries", "三星半导体", "Samsung Semiconductor"],
-    "981":  ["中芯国际", "SMIC", "华虹半导体", "Hua Hong", "台积电", "TSMC", "联电", "UMC", "GlobalFoundries", "三星半导体", "Samsung Semiconductor", "英特尔", "Intel", "AMD"],
-    "788":  ["中国铁塔", "China Tower", "中国通信服务", "China Comservice", "中通服", "中移铁通"],
-    "1729": ["汇聚科技", "Huiju Tech", "富春科技", "Fuchun Tech", "长江通信", "Changjiang Comm"],
-    # Auto
-    "9868": ["XPeng", "小鹏", "理想汽车", "Li Auto", "蔚来", "NIO", "比亚迪", "BYD", "吉利", "Geely", "特斯拉", "Tesla"],
-    "2015": ["理想汽车", "Li Auto", "小鹏", "XPeng", "蔚来", "NIO", "比亚迪", "BYD", "吉利", "Geely", "特斯拉", "Tesla"],
-    "175":  ["吉利汽车", "Geely", "比亚迪", "BYD", "长城汽车", "Great Wall", "长安汽车", "上汽", "SAIC", "广汽", "GAC", "东风", "Dongfeng", "奇瑞", "Chery"],
-    "2333": ["长城汽车", "Great Wall", "吉利", "Geely", "比亚迪", "BYD", "长安汽车", "上汽", "SAIC", "广汽", "GAC", "东风", "Dongfeng"],
-    "9866": ["蔚来", "NIO", "小鹏", "XPeng", "理想汽车", "Li Auto", "比亚迪", "BYD", "特斯拉", "Tesla"],
-    "489":  ["东风集团", "Dongfeng", "吉利", "Geely", "比亚迪", "BYD", "长城汽车", "Great Wall", "长安汽车", "上汽", "SAIC"],
-    "2238": ["广汽集团", "GAC", "吉利", "Geely", "比亚迪", "BYD", "长城汽车", "Great Wall", "长安汽车", "上汽", "SAIC"],
-    # Banks / Finance
-    "5":    ["汇丰", "HSBC", "渣打", "Standard Chartered", "恒生", "Hang Seng", "中银香港", "BOCHK", "花旗", "Citibank", "摩根大通", "JPMorgan", "东亚银行", "Bank of East Asia"],
-    "1398": ["工商银行", "ICBC", "建设银行", "CCB", "农业银行", "ABC", "中国银行", "BOC", "交通银行", "BoCOM", "招商银行", "CMB", "兴业银行", "CIB"],
-    "939":  ["建设银行", "CCB", "工商银行", "ICBC", "农业银行", "ABC", "中国银行", "BOC", "交通银行", "BoCOM", "招商银行", "CMB"],
-    "1288": ["农业银行", "ABC", "工商银行", "ICBC", "建设银行", "CCB", "中国银行", "BOC", "交通银行", "BoCOM", "招商银行", "CMB"],
-    "3988": ["中国银行", "BOC", "工商银行", "ICBC", "建设银行", "CCB", "农业银行", "ABC", "交通银行", "BoCOM", "招商银行", "CMB"],
-    "2318": ["中国平安", "Ping An", "中国人寿", "China Life", "太平洋保险", "CPIC", "友邦", "AIA", "新华保险", "New China Life", "人保", "PICC"],
-    "2628": ["中国人寿", "China Life", "中国平安", "Ping An", "太平洋保险", "CPIC", "友邦", "AIA", "新华保险", "New China Life", "人保", "PICC"],
-    "1299": ["友邦保险", "AIA", "保诚", "Prudential", "宏利", "Manulife", "安盛", "AXA", "永明", "Sun Life", "中国人寿", "China Life", "中国平安", "Ping An"],
-    "388":  ["港交所", "HKEX", "香港交易所", "伦敦证券交易所", "LSE", "新加坡交易所", "SGX", "纳斯达克", "Nasdaq", "纽约证券交易所", "NYSE", "泛欧交易所", "Euronext"],
-    "2388": ["中银香港", "BOCHK", "汇丰", "HSBC", "恒生", "Hang Seng", "渣打", "Standard Chartered", "东亚银行", "Bank of East Asia", "工银亚洲", "ICBC Asia"],
-    "2588": ["中银航空租赁", "BOC Aviation", "国银租赁", "CDB Leasing", "中飞租赁", "China Aircraft Leasing", "招银租赁", "CMB Leasing"],
-    # Insurance / Healthcare
-    "1833": ["平安好医生", "Ping An Healthcare", "阿里健康", "Ali Health", "京东健康", "JD Health", "叮当健康", "Dingdang", "医思健康", "EC Healthcare"],
-    "241":  ["阿里健康", "Ali Health", "平安好医生", "Ping An Healthcare", "京东健康", "JD Health", "叮当健康", "Dingdang", "1药网", "111"],
-    "6618": ["京东健康", "JD Health", "阿里健康", "Ali Health", "平安好医生", "Ping An Healthcare", "叮当健康", "Dingdang", "医思健康", "EC Healthcare"],
-    "2269": ["药明生物", "WuXi Biologics", "药明康德", "WuXi AppTec", "三星生物", "Samsung Biologics", "Lonza", "勃林格殷格翰", "BI", "辉瑞", "Pfizer", "诺华", "Novartis"],
-    "2359": ["药明康德", "WuXi AppTec", "药明生物", "WuXi Biologics", "凯莱英", "Asymchem", "博腾股份", "Porton", "九洲药业", "Jiuzhou Pharma"],
-    "1093": ["石药集团", "CSPC", "恒瑞医药", "Hengrui", "中国生物制药", "Sino Biopharm", "齐鲁制药", "Qilu", "扬子江", "Yangtze River", "复星医药", "Fosun Pharma"],
-    "1177": ["中国生物制药", "Sino Biopharm", "恒瑞医药", "Hengrui", "石药集团", "CSPC", "信达生物", "Innovent", "百济神州", "BeiGene", "复星医药", "Fosun Pharma"],
-    "1276": ["恒瑞医药", "Hengrui", "石药集团", "CSPC", "中国生物制药", "Sino Biopharm", "齐鲁制药", "Qilu", "翰森制药", "Hansoh", "海思科", "Haisco"],
-    "9969": ["诺诚健华", "InnoCare", "康方生物", "Akeso", "信达生物", "Innovent", "百济神州", "BeiGene", "恒瑞医药", "Hengrui"],
-    "1513": ["丽珠医药", "Livzon", "石药集团", "CSPC", "恒瑞医药", "Hengrui", "中国生物制药", "Sino Biopharm", "复星医药", "Fosun Pharma"],
-    "3347": ["泰格医药", "Tigermed", "药明康德", "WuXi AppTec", "凯莱英", "Asymchem", "博腾股份", "Porton", "昭衍新药", "JOINN"],
-    "1801": ["信达生物", "Innovent", "百济神州", "BeiGene", "康方生物", "Akeso", "诺诚健华", "InnoCare", "恒瑞医药", "Hengrui", "中国生物制药", "Sino Biopharm"],
-    "3692": ["翰森制药", "Hansoh", "恒瑞医药", "Hengrui", "中国生物制药", "Sino Biopharm", "石药集团", "CSPC", "齐鲁制药", "Qilu"],
-    "9926": ["康方生物", "Akeso", "信达生物", "Innovent", "百济神州", "BeiGene", "诺诚健华", "InnoCare", "恒瑞医药", "Hengrui"],
-    "6160": ["百济神州", "BeiGene", "信达生物", "Innovent", "康方生物", "Akeso", "诺诚健华", "InnoCare", "恒瑞医药", "Hengrui", "中国生物制药", "Sino Biopharm"],
-    "2252": ["微创机器人", "Microport", "威高股份", "Well High", "南微医学", "NCGM", "心脉医疗", "Endovastec", "沛嘉医疗", "Peijia"],
-    "9660": ["地平线机器人", "Horizon Robotics", "寒武纪", "Cambricon", "华为海思", "HiSilicon", "英伟达", "NVIDIA", "Mobileye"],
-    "9880": ["优必选", "UBTECH", "九号公司", "Ninebot", "石头科技", "Roborock", "科沃斯", "Ecovacs", "小米", "Xiaomi"],
-    "2432": ["越疆科技", "DOBOT", "大族机器人", "Han's Robot", "遨博智能", "AUBO", "节卡机器人", "JAKA", "埃斯顿", "Estun"],
-    # Consumer / Retail / Food
-    "2020": ["安踏体育", "Anta", "李宁", "Li Ning", "361度", "361 Degrees", "特步", "Xtep", "阿迪达斯", "Adidas", "耐克", "Nike", "斯凯奇", "Skechers", "Puma"],
-    "2331": ["李宁", "Li Ning", "安踏体育", "Anta", "361度", "361 Degrees", "特步", "Xtep", "阿迪达斯", "Adidas", "耐克", "Nike"],
-    "291":  ["华润啤酒", "CR Beer", "青岛啤酒", "Tsingtao", "百威亚太", "Budweiser APAC", "百威", "Budweiser", "雪花啤酒", "Snow Beer", "燕京啤酒", "重庆啤酒", "珠江啤酒"],
-    "168":  ["青岛啤酒", "Tsingtao", "华润啤酒", "CR Beer", "百威亚太", "Budweiser APAC", "燕京啤酒", "雪花啤酒", "Snow Beer", "重庆啤酒", "珠江啤酒", "惠泉啤酒"],
-    "1876": ["百威亚太", "Budweiser APAC", "华润啤酒", "CR Beer", "青岛啤酒", "Tsingtao", "燕京啤酒", "雪花啤酒", "Snow Beer", "嘉士伯", "Carlsberg"],
-    "9633": ["农夫山泉", "Nongfu Spring", "华润怡宝", "C. Estbon", "康师傅", "Tingyi", "统一企业", "Uni-President", "娃哈哈", "Wahaha", "景田", "GBT", "今麦郎"],
-    "2319": ["蒙牛乳业", "Mengniu", "伊利股份", "Yili", "光明乳业", "Bright", "三元股份", "Sanyuan", "君乐宝", "Junlebao", "飞鹤", "Feihe", "澳优"],
-    "590":  ["六福珠宝", "Luk Fook", "周大福", "Chow Tai Fook", "周生生", "Chow Sang Sang", "老铺黄金", "Laopu Gold", "金至尊", "King Prince"],
-    "1929": ["周大福", "Chow Tai Fook", "六福珠宝", "Luk Fook", "周生生", "Chow Sang Sang", "老铺黄金", "Laopu Gold", "金至尊", "King Prince"],
-    "116":  ["周生生", "Chow Sang Sang", "周大福", "Chow Tai Fook", "六福珠宝", "Luk Fook", "老铺黄金", "Laopu Gold"],
-    "6181": ["老铺黄金", "Laopu Gold", "周大福", "Chow Tai Fook", "六福珠宝", "Luk Fook", "周生生", "Chow Sang Sang", "金至尊", "King Prince"],
-    "220":  ["统一企业", "Uni-President", "康师傅", "Tingyi", "旺旺", "Want Want", "中国旺旺", "China Want Want", "康师傅", "Nissin"],
-    "322":  ["康师傅", "Tingyi", "统一企业", "Uni-President", "旺旺", "Want Want", "今麦郎", "今麦郎食品", "白象", "Bai Xiang"],
-    "881":  ["中升控股", "Zhongsheng", "永达汽车", "Yongda", "广汇宝信", "Autohome", "正通汽车", "Zhengtong", "和谐汽车", "China Harmony"],
-    "2":    ["中电", "CLP", "中华电力", "电能实业", "Power Assets", "港灯", "HK Electric", "华润电力", "China Resources Power", "香港电灯"],
-    "3":    ["香港中华煤气", "HK & China Gas", "Towngas", "港灯", "HK Electric", "中电", "CLP", "华润燃气", "China Resources Gas", "新奥能源", "ENN Energy"],
-    "6":    ["电能实业", "Power Assets", "港灯", "HK Electric", "中电", "CLP", "电能", "长江基建", "CKI", "恒基阳光", "Henderson Land"],
-    "836":  ["华润电力", "China Resources Power", "中电", "CLP", "港灯", "HK Electric", "大唐发电", "DT Power", "华能国际", "Huaneng", "国电电力", "SDIC"],
-    "2380": ["中国电力", "China Power", "中电", "CLP", "华润电力", "CR Power", "大唐发电", "DT Power", "华能国际", "Huaneng", "国电电力", "SDIC"],
-    "1038": ["长江基建", "CKI", "电能实业", "Power Assets", "港灯", "HK Electric", "中电", "CLP", "恒基集团", "Henderson Land"],
-    "2688": ["新奥能源", "ENN Energy", "华润燃气", "China Resources Gas", "港华燃气", "Towngas China", "中国燃气", "China Gas", "昆仑能源", "Kunlun Energy"],
-    "1193": ["华润燃气", "China Resources Gas", "新奥能源", "ENN Energy", "港华燃气", "Towngas China", "中国燃气", "China Gas", "昆仑能源", "Kunlun Energy"],
-    "135":  ["昆仑能源", "Kunlun Energy", "新奥能源", "ENN Energy", "华润燃气", "China Resources Gas", "港华燃气", "Towngas China", "中国燃气", "China Gas"],
-    "2638": ["港灯电力", "HK Electric", "中电", "CLP", "电能实业", "Power Assets", "华润电力", "China Resources Power"],
-    "1199": ["中远海运港口", "COSCO Ports", "招商局港口", "China Merchants Port", "和记黄埔", "Hutchison", "嘉里物流", "Kerry", "上港集团", "SIPG"],
-    "144":  ["招商局港口", "China Merchants Port", "中远海运港口", "COSCO Ports", "和记黄埔", "Hutchison", "嘉里物流", "Kerry", "盐田港", "Yantian Port"],
-    "2618": ["京东物流", "JD Logistics", "顺丰速运", "SF Express", "中通快递", "ZTO Express", "韵达快递", "Yunda", "圆通速递", "YTO Express"],
-    "2057": ["中通快递", "ZTO Express", "顺丰速运", "SF Express", "圆通速递", "YTO Express", "韵达快递", "Yunda", "申通快递", "STO Express", "极兔速递", "J&T Express"],
-    "1519": ["极兔速递", "J&T Express", "顺丰速运", "SF Express", "中通快递", "ZTO Express", "圆通速递", "YTO Express", "韵达快递", "Yunda", "申通快递", "STO Express"],
-    # Resources / Energy
-    "26":   ["中海油", "CNOOC", "中石油", "PetroChina", "中石化", "Sinopec", "埃尼", "Eni", "雪佛龙", "Chevron", "康菲", "ConocoPhillips", "西方石油", "Occidental"],
-    "883":  ["中海油", "CNOOC", "中石油", "PetroChina", "中石化", "Sinopec", "英国石油", "BP", "埃尼", "Eni", "壳牌", "Shell", "道达尔", "TotalEnergies"],
-    "386":  ["中石化", "Sinopec", "中石油", "PetroChina", "中海油", "CNOOC", "英国石油", "BP", "埃尼", "Eni", "壳牌", "Shell", "道达尔", "TotalEnergies"],
-    "857":  ["中石油", "PetroChina", "中石化", "Sinopec", "中海油", "CNOOC", "埃尼", "Eni", "雪佛龙", "Chevron", "康菲", "ConocoPhillips"],
-    "1088": ["中国神华", "Shenhua", "中煤能源", "China Coal", "兖矿能源", "Yankuang", "伊泰煤炭", "Yitai", "陕西煤业", "Shaanxi Coal", "山西焦化", "潞安环能"],
-    "1171": ["兖矿能源", "Yankuang", "中国神华", "Shenhua", "中煤能源", "China Coal", "伊泰煤炭", "Yitai", "陕西煤业", "Shaanxi Coal"],
-    "1898": ["中煤能源", "China Coal", "中国神华", "Shenhua", "兖矿能源", "Yankuang", "伊泰煤炭", "Yitai", "陕西煤业", "Shaanxi Coal"],
-    "2600": ["中国铝业", "Chalco", "中国宏桥", "China Hongqiao", "南山铝业", "Nanshan Aluminum", "神火股份", "Shenhuo", "云铝股份", "Yun铝"],
-    "1378": ["中国宏桥", "China Hongqiao", "中国铝业", "Chalco", "南山铝业", "Nanshan Aluminum", "神火股份", "Shenhuo", "云铝股份", "Yun铝"],
-    "2899": ["紫金矿业", "Zijin Mining", "中国黄金", "China Gold", "山东黄金", "Shandong Gold", "招金矿业", "Zhaojin", "中金黄金", "CIMC Gold", "湖南黄金"],
-    "1787": ["山东黄金", "Shandong Gold", "紫金矿业", "Zijin Mining", "招金矿业", "Zhaojin", "中国黄金", "China Gold", "恒兴黄金", "恒兴"],
-    "1818": ["招金矿业", "Zhaojin", "紫金矿业", "Zijin Mining", "中国黄金", "China Gold", "山东黄金", "Shandong Gold", "恒兴黄金"],
-    "3330": ["灵宝黄金", "Lingbao Gold", "紫金矿业", "Zijin Mining", "中国黄金", "China Gold", "山东黄金", "Shandong Gold", "招金矿业"],
-    # Gaming / Internet content
-    "9999": ["网易", "NetEase", "腾讯", "Tencent", "完美世界", "Perfect World", "盛趣游戏", "Shengqu Games", "米哈游", "miHoYo", "莉莉丝", "Lilith"],
-    "1698": ["腾讯音乐", "Tencent Music", "网易云音乐", "NetEase Cloud Music", "Spotify", "Apple Music", "喜马拉雅", "Ximalaya", "荔枝", "Litchi"],
-    "9898": ["网易云音乐", "NetEase Cloud Music", "腾讯音乐", "Tencent Music", "QQ音乐", "Spotify", "Apple Music", "喜马拉雅", "Ximalaya", "荔枝", "Litchi"],
-    "772":  ["阅文集团", "China Literature", "掌阅科技", "Zhangyue", "中文在线", "China Literature Online", "起点中文", "Qidian"],
-    "1357": ["美图", "Meitu", "字节跳动", "ByteDance", "快手", "Kuaishou", "小红书", "RED"],
-    # Travel / Transport
-    "9961": ["携程", "Trip.com", "去哪儿", "Qunar", "同程旅行", "Tongcheng", "艺龙", "eLong", "飞猪", "Fliggy", "马蜂窝", "MaFeng", "Booking", "Expedia"],
-    "780":  ["同程旅行", "Tongcheng Travel", "携程", "Trip.com", "去哪儿", "Qunar", "飞猪", "Fliggy", "马蜂窝", "MaFeng", "Booking", "Expedia"],
-    "293":  ["国泰航空", "Cathay Pacific", "香港航空", "HK Airlines", "大湾区航空", "Greater Bay Airlines", "中国国航", "Air China", "东方航空", "China Eastern"],
-    "1919": ["中远海控", "COSCO Shipping", "东方海外", "OOCL", "中远海运港口", "COSCO Ports", "马士基", "Maersk", "赫伯罗特", "Hapag-Lloyd", "达飞", "CMA CGM"],
-    "316":  ["东方海外国际", "OOCL", "中远海控", "COSCO Shipping", "中远海运港口", "COSCO Ports", "马士基", "Maersk", "赫伯罗特", "Hapag-Lloyd"],
-    "1128": ["永利澳门", "Wynn Macau", "银河娱乐", "Galaxy Entertainment", "金沙中国", "Sands China", "美高梅中国", "MGM China", "澳博控股", "SJM", "新濠国际", "Melco"],
-    "27":   ["银河娱乐", "Galaxy Entertainment", "金沙中国", "Sands China", "美高梅中国", "MGM China", "永利澳门", "Wynn Macau", "澳博控股", "SJM", "新濠国际", "Melco"],
-    "1928": ["金沙中国", "Sands China", "银河娱乐", "Galaxy Entertainment", "美高梅中国", "MGM China", "永利澳门", "Wynn Macau", "澳博控股", "SJM", "新濠国际", "Melco"],
-    "2282": ["美高梅中国", "MGM China", "银河娱乐", "Galaxy Entertainment", "金沙中国", "Sands China", "永利澳门", "Wynn Macau", "澳博控股", "SJM", "新濠国际", "Melco"],
-    "880":  ["澳博控股", "SJM", "永利澳门", "Wynn Macau", "银河娱乐", "Galaxy Entertainment", "金沙中国", "Sands China", "美高梅中国", "MGM China"],
-    "2200": ["万达酒店发展", "Wanda Hotel", "香格里拉", "Shangri-La", "华住集团", "Huazhu", "锦江酒店", "Jinjiang Hotels", "首旅酒店"],
-    "1397": ["海丰国际", "SITC", "中远海控", "COSCO Shipping", "东方海外", "OOCL", "海能达", "Hytera"],
-    "2314": ["波司登", "Bosideng", "加拿大鹅", "Canada Goose", "Moncler", "盟可睐", "七匹狼", "Septwolves", "红豆股份"],
-    "2669": ["中海物业", "China Overseas Property", "绿城服务", "Greentown Service", "碧桂园服务", "Country Garden Services", "万物云", "Onewo"],
-    "6098": ["碧桂园服务", "Country Garden Services", "万物云", "Onewo", "绿城服务", "Greentown Service", "中海物业", "China Overseas Property", "雅生活", "Yaha"],
-    "6666": ["创梦天地", "iDreamSky", "中手游", "CMGE", "腾讯", "Tencent", "网易", "NetEase", "完美世界", "Perfect World"],
-    "1811": ["中广核新能源", "CGN New Energy", "龙源电力", "Longyuan Power", "华能新能源", "Huaneng New Energy", "大唐新能源", "Datang Renewable"],
-    "916":  ["民生银行", "CMBC", "招商银行", "CMB", "兴业银行", "CIB", "浦发银行", "SPD Bank", "平安银行", "Ping An Bank"],
-    "9688": ["元宇宙云", "MetaCloud", "商汤", "SenseTime", "旷视", "Megvii", "百度", "Baidu"],
-    "3898": ["亿航智能", "EHang", "小鹏汇天", "XPeng Aero", "峰飞航空", "AutoFlight", "Lilium", "Joby Aviation"],
-    "9878": ["医思健康", "EC Healthcare", "香港医思", "Hong Kong Medical", "瑞尔齿科", "Arrail Dental", "通策医疗", "Tongci Medical"],
-    "6899": ["长和外", "Changwaibao", "长江生命科技", "CK Life Sciences", "金斯瑞", "GenScript", "药明生物", "WuXi Biologics"],
-    "9955": ["华立大学", "Huali Group", "中汇集团", "Zhonghui Group", "希望教育", "Hope Education", "宇华教育", "Yuhua Education"],
-    "9950": ["鹰瞳科技", "Airdoc", "医脉通", "MediBo", "医渡云", "Yidu Cloud", "零氪科技", "LinkDoc"],
-}
-
-# Build entity map
-for ticker, keywords in _ENTITIES.items():
-    _ENTITY_MAP[ticker] = {kw.lower(): "competitor" for kw in keywords}
-
-# Add supplier relations (matching sam_ontology.ipynb manual_relations)
-_SUPPLIER_RELATIONS = [
-    ("285", "981", "supplier"), ("285", "1347", "supplier"),
-    ("2382", "981", "supplier"), ("2018", "981", "supplier"),
-    ("1810", "981", "supplier"), ("1810", "1347", "supplier"),
-    ("1810", "2382", "supplier"), ("1810", "2018", "supplier"),
-    ("1415", "2382", "supplier"), ("700", "981", "supplier"), ("700", "1347", "supplier"),
-    ("9626", "700", "supplier"), ("1024", "700", "supplier"), ("3690", "700", "supplier"),
-    ("9988", "700", "supplier"), ("9618", "700", "supplier"),
-    ("1211", "285", "supplier"), ("1211", "2382", "supplier"), ("1211", "2018", "supplier"),
-    ("9868", "285", "supplier"), ("9868", "2382", "supplier"),
-    ("2015", "285", "supplier"), ("2015", "2382", "supplier"),
-    ("175", "285", "supplier"), ("175", "2382", "supplier"),
-    ("2333", "285", "supplier"), ("2238", "285", "supplier"),
-    ("9866", "285", "supplier"), ("489", "285", "supplier"),
-    ("2", "1088", "supplier"), ("2", "1171", "supplier"), ("2", "386", "supplier"),
-    ("3", "1088", "supplier"), ("3", "1171", "supplier"), ("3", "386", "supplier"),
-    ("6", "1088", "supplier"), ("6", "1171", "supplier"), ("6", "386", "supplier"),
-    ("836", "1088", "supplier"), ("836", "1171", "supplier"),
-    ("2688", "1088", "supplier"), ("135", "1088", "supplier"),
-    ("2638", "1088", "supplier"), ("1193", "1088", "supplier"),
-    ("2380", "1088", "supplier"), ("1038", "1088", "supplier"),
-    ("1919", "386", "supplier"), ("316", "386", "supplier"),
-    ("1199", "386", "supplier"), ("144", "386", "supplier"),
-    ("1177", "2269", "supplier"), ("1177", "2359", "supplier"),
-    ("1093", "2269", "supplier"), ("1093", "2359", "supplier"),
-    ("1276", "2269", "supplier"), ("1276", "2359", "supplier"),
-    ("9969", "2269", "supplier"), ("1513", "2269", "supplier"),
-    ("3347", "2269", "supplier"), ("1801", "2269", "supplier"),
-    ("3692", "2269", "supplier"), ("9926", "2269", "supplier"),
-    ("6160", "2269", "supplier"), ("241", "2269", "supplier"), ("6618", "2269", "supplier"),
-    ("590", "2899", "supplier"), ("1929", "2899", "supplier"),
-    ("116", "2899", "supplier"), ("6181", "2899", "supplier"),
-    ("590", "1818", "supplier"), ("1929", "1818", "supplier"),
-    ("116", "1818", "supplier"), ("6181", "1818", "supplier"),
-    ("590", "1787", "supplier"), ("1929", "1787", "supplier"),
-    ("116", "1787", "supplier"), ("6181", "1787", "supplier"),
-    ("728", "763", "supplier"), ("762", "763", "supplier"), ("941", "763", "supplier"),
-    ("728", "6869", "supplier"), ("762", "6869", "supplier"), ("941", "6869", "supplier"),
-    ("728", "2342", "supplier"), ("762", "2342", "supplier"),
-    ("9618", "2618", "supplier"),
-    ("700", "981", "supplier"), ("700", "1347", "supplier"),
-    ("9988", "981", "supplier"), ("9988", "1347", "supplier"),
-]
-
-# Add index constituents
-_INDEX_MEMBERS = [
-    "5", "388", "700", "9988", "3690", "1211", "1810", "2318", "939", "1398",
-    "2388", "2", "3", "6", "883", "386", "857", "27", "1928", "2282",
-    "291", "168", "1876", "2319", "2331", "2020", "2269", "1093", "1177",
-    "2382", "992", "1088", "1171", "2899", "2600", "1919", "316", "9961",
-    "780", "293", "135", "2688", "2638", "1193", "2380", "1038",
-]
-
-for ticker in _INDEX_MEMBERS:
-    if ticker not in _ENTITY_MAP:
-        _ENTITY_MAP[ticker] = {}
-    if "hsi" not in _ENTITY_MAP[ticker]:
-        _ENTITY_MAP[ticker]["hsi"] = "index"
-    if "hang seng" not in _ENTITY_MAP[ticker]:
-        _ENTITY_MAP[ticker]["hang seng"] = "index"
-
-# Add southbound institutional
-_SOUTHBOUND_MEMBERS = [
-    "700", "9988", "3690", "9618", "1211", "1810", "2318", "5", "388",
-]
-for ticker in _SOUTHBOUND_MEMBERS:
-    if ticker not in _ENTITY_MAP:
-        _ENTITY_MAP[ticker] = {}
-    if "southbound" not in _ENTITY_MAP[ticker]:
-        _ENTITY_MAP[ticker]["southbound"] = "institution"
-
-# Apply supplier relations
-for t1, t2, rel in _SUPPLIER_RELATIONS:
-    if t1 not in _ENTITY_MAP:
-        _ENTITY_MAP[t1] = {}
-    if t2 in _ENTITIES:
-        for kw in _ENTITIES[t2]:
-            key = kw.lower()
-            if key not in _ENTITY_MAP[t1]:
-                _ENTITY_MAP[t1][key] = rel
-
 
 # ── LLM Labeler (matching main.py's SignalEnrichmentPipeline) ─────────────────
 
@@ -615,24 +368,39 @@ class SentimentAnalyzer:
 
 def apply_ontology(items: list[dict], ticker: str) -> list[dict]:
     """
-    Apply the financial knowledge graph ontology adjustment.
-    Exactly matches sam_ontology.ipynb Cell 2:
-      - competitor mentioned in title -> invert sentiment score
+    Apply the financial knowledge graph ontology adjustment using Gemini's relation_id.
+      - 1.1, 1.3, 1.4 -> invert sentiment score
+      - 0.0 -> exclude/zero out (no relation)
       - otherwise -> pass through unchanged (match)
     """
-    ticker_map = _ENTITY_MAP.get(str(ticker), {})
+    # The relation IDs that represent a zero-sum threat to the target stock
+    INVERT_RELATIONS = {"1.1", "1.3", "1.4"}
+    
+    # We will build a new list to optionally drop the 0.0 items completely
+    adjusted_items = []
+    
     for item in items:
-        raw = float(item.get("raw_sentiment_score", 0.0))
-        title_lower = item.get("title", "").lower()
-        adj = raw
-        for kw, rel_type in ticker_map.items():
-            if kw in title_lower:
-                if rel_type == "competitor":
-                    adj = -raw
-                # supplier / index / institution -> match (adj = raw, unchanged)
-                break
-        item["ontology_sentiment"] = adj
-    return items
+        rel_id = str(item.get("relation_id", "0.0")).strip()
+        raw_score = float(item.get("raw_sentiment_score", 0.0))
+        
+        # 1. If it's 0.0 (No Relation / Noise), we completely ignore its sentiment score
+        if rel_id in ("0.0", "0"):
+            item["ontology_sentiment"] = 0.0
+            
+            # NOTE: If you want to completely hide 0.0 news from the dashboard 
+            # and the daily mean math, you can type `continue` here instead of appending it.
+            
+        # 2. If it's a competitor stealing market share, invert it
+        elif rel_id in INVERT_RELATIONS:
+            item["ontology_sentiment"] = -raw_score
+            
+        # 3. All other relations (1.2, 2.x, 3.x, 4.x) pass through normally
+        else:
+            item["ontology_sentiment"] = raw_score
+            
+        adjusted_items.append(item)
+        
+    return adjusted_items
 
 
 # ── Daily Sentiment Builder ───────────────────────────────────────────────────
