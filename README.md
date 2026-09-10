@@ -2,11 +2,11 @@
 
 A financial chatbot application with a Next.js frontend and FastAPI backend, powered by Gemini for intent routing and response generation, with a full ML pipeline for stock prediction.
 
-<p align="center">
-  <img src="demo_photo/demo1.png" width="32%" alt="FinChat Demo 1" />
-  <img src="demo_photo/demo2.png" width="32%" alt="FinChat Demo 2" />
-  <img src="demo_photo/demo3.png" width="32%" alt="FinChat Demo 3" />
-</p>
+![Demo 1](./demo_photo/demo1.png)
+
+![Demo 2](./demo_photo/demo2.png)
+
+![Demo 3](./demo_photo/demo3.png)
 
 ## Project Structure
 
