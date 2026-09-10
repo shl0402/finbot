@@ -3,7 +3,7 @@
 A financial chatbot application with a Next.js frontend and FastAPI backend, powered by Gemini for intent routing and response generation, with a full ML pipeline for stock prediction.
 
 ### Stock Analysis & Prediction Dashboard
-The stock analysis workflow featuring ML-driven signals (BUY/SELL), confidence scores, historical price charts with next-day price projection, and key technical indicators.
+The stock analysis workflow featuring ML-driven signals (BUY/SELL), confidence scores, historical price charts with next-candle price projection, and key technical indicators.
 
 ![Stock Analysis Dashboard](./demo_photo/demo1.png)
 
