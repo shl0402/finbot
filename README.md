@@ -2,11 +2,20 @@
 
 A financial chatbot application with a Next.js frontend and FastAPI backend, powered by Gemini for intent routing and response generation, with a full ML pipeline for stock prediction.
 
-![Demo 1](./demo_photo/demo1.png)
+### Stock Analysis & Prediction Dashboard
+The stock analysis workflow featuring ML-driven signals (BUY/HOLD/SELL), confidence scores, historical price charts with next-day price projection, and key technical indicators.
 
-![Demo 2](./demo_photo/demo2.png)
+![Stock Analysis Dashboard](./demo_photo/demo1.png)
 
-![Demo 3](./demo_photo/demo3.png)
+### Real-Time Pipeline & Entity Sentiment Breakdown
+Visualizing real-time pipeline execution steps alongside the news intelligence dashboard, including entity ontology extraction, sentiment classification, and contextual reasoning.
+
+![News Sentiment and Ontology Dashboard](./demo_photo/demo2.png)
+
+### Sector Performance Heatmap & Market Distribution
+Interactive sector overview displaying market heatmaps, multi-sector percentage changes, and a market-cap distribution breakdown with comparative bar charts.
+
+![Sector Analysis Heatmap](./demo_photo/demo3.png)
 
 ## Project Structure
 
